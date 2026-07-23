@@ -1,0 +1,230 @@
+---
+title: "Path rules and ZIP entry requirements"
+sidebarTitle: "Path Rules"
+description: "Reference for safe relative path definitions, ZIP entry separator requirements, core vs skill path policy differences, and the slug pattern for skill names."
+---
+
+The GPT Project Skill System enforces strict path and ZIP entry rules for both core and skill packages. This page defines what constitutes a safe relative path, explains the differences between core and skill path policies, documents ZIP entry separator requirements, and lists the slug pattern that skill names must satisfy.
+
+---
+
+## Safe relative path definition
+
+A path is **safe and relative** if it satisfies all of the following conditions:
+
+- Is **not absolute** — does not begin with `/`.
+- Does **not contain `..`** — no traversal components.
+- Does **not use backslash** (`\`) path separators.
+- Does **not contain empty path segments** — no `//` or trailing `/` that implies a segment.
+- Does **not contain drive letters** — for example, no `C:` prefix.
+- Does **not rely on traversal** — no sequences that navigate outside the package root.
+- Does **not use a wrapper directory as the sole ZIP root** — `MANIFEST.json` must be reachable at ZIP root level.
+
+<Accordion title="Valid and invalid path examples">
+
+```text
+Valid safe relative paths:
+  MANIFEST.json
+  SKILL.md
+  docs/columns.md
+  tools/helper.py
+  references/schema.md
+  templates/report.csv
+  SYSTEM_CORE/MANIFEST.json
+
+Invalid paths:
+  /absolute/path.md          ← absolute (leading slash)
+  ../escape.md               ← traversal with ..
+  SYSTEM_CORE\..\escape.md   ← backslash and traversal
+  C:\absolute\path.md        ← drive letter
+  docs//columns.md           ← empty path segment
+  C:relative.md              ← drive letter prefix
+```
+
+</Accordion>
+
+---
+
+## Core path policy
+
+Core mounted paths are subject to a **stricter policy** than skill paths. In core version 0.6, all of the following restrictions apply to paths declared in the core manifest:
+
+- All declared paths are **relative to `SYSTEM_CORE/`** — the loader resolves them as `SYSTEM_CORE/<filename>`.
+- Mounted paths must be **direct filenames** — no subdirectory component is permitted.
+- Allowed mounted extensions: `.md` and `.json` **only**.
+- The following are all disallowed in mounted core paths:
+  - Absolute paths
+  - `..`
+  - References that would resolve outside `SYSTEM_CORE/`
+  - Subdirectory separators in mounted path strings
+
+<Note>
+  Files that are unpacked into the core ZIP but not declared in the manifest
+  may exist on disk — they are simply not mounted. Presence on disk does not
+  imply availability in the session context.
+</Note>
+
+<Warning>
+  `SKILLS/README.md` is **not mountable** and must not appear in
+  `SYSTEM_CORE/MANIFEST.json`. It must not be used as a list of active skills.
+</Warning>
+
+---
+
+## Skill path policy
+
+Skill packages use a **more permissive** policy than the core. The key differences:
+
+- Skill packages may **preserve original safe relative internal paths**, including nested folder structures.
+- `load_sequence` may include `SKILL.md` and any safe relative UTF-8 textual file, including files in subdirectories.
+- `support_files`, `tool_files`, and `asset_files` may point to any safe relative path within the package.
+
+The one restriction that applies to all file categories equally is that every path must be a **safe relative path** as defined above.
+
+<Tabs>
+  <Tab title="Core path policy">
+
+```text
+Allowed in core manifest:
+  ENTRY.md            ← direct filename, .md ✓
+  README.md           ← direct filename, .md ✓
+  MANIFEST.json       ← direct filename, .json ✓
+
+Not allowed in core manifest:
+  docs/overview.md    ← subdirectory component ✗
+  ../escape.md        ← traversal ✗
+  SKILLS/README.md    ← outside SYSTEM_CORE ✗
+  helper.py           ← unsupported extension ✗
+```
+
+  </Tab>
+  <Tab title="Skill path policy">
+
+```text
+Allowed in skill manifest:
+  SKILL.md                          ← root file ✓
+  docs/columns.md                   ← nested path in load_sequence ✓
+  references/schema.md              ← nested path in support_files ✓
+  scripts/inspect_skill.py          ← nested path in tool_files ✓
+  templates/report.csv              ← nested path in asset_files ✓
+
+Not allowed in skill manifest:
+  ../outside.md                     ← traversal ✗
+  /absolute/path.md                 ← absolute ✗
+  C:\windows\path.md                ← drive letter ✗
+  docs\\helper.py                   ← backslash separator ✗
+```
+
+  </Tab>
+</Tabs>
+
+---
+
+## ZIP entry separator requirements
+
+All ZIP entries in both core and skill packages must use **POSIX `/` path separators**.
+
+- ZIP entries must **not contain `\`** (backslash).
+- The runtime must **fail fast** if a core or skill package contains ZIP entries with `\`.
+- The runtime must **not silently normalize** invalid ZIP entries — there is no automatic conversion from `\` to `/`.
+
+```text
+Valid ZIP entries:
+  SYSTEM_CORE/MANIFEST.json
+  SYSTEM_CORE/ENTRY.md
+  SKILLS/README.md
+  MANIFEST.json
+  SKILL.md
+  docs/columns.md
+  tools/helper.py
+
+Invalid ZIP entries:
+  SYSTEM_CORE\MANIFEST.json     ← backslash separator ✗
+  ..\escape.md                  ← traversal ✗
+  C:\absolute\path.md           ← drive letter + backslash ✗
+  /absolute/path.md             ← leading slash ✗
+```
+
+---
+
+## Slug rules for skill names
+
+The `<name>` value used in `SKILL <name> UNPACK` and `SKILL <name> LOAD` must be a valid **skill slug**.
+
+<ParamField path="<name>" type="string" required>
+  The skill slug used in lifecycle commands. Must match the pattern
+  `^[a-z0-9_-]+$` and satisfy all of the following:
+
+  - Not empty.
+  - Lowercase ASCII letters, digits, hyphens, and underscores only.
+  - No spaces.
+  - No dots (`.`).
+  - No forward slashes (`/`).
+  - No backslashes (`\`).
+  - Is not and does not contain `..`.
+</ParamField>
+
+<Accordion title="Valid and invalid slug examples">
+
+```text
+Valid slugs:
+  csv-profiler
+  skill_adapter
+  summarizer
+  my-tool-v2
+  data123
+
+Invalid slugs:
+  My_Skill        ← uppercase letter
+  csv.profiler    ← contains dot
+  csv/profiler    ← contains forward slash
+  csv\profiler    ← contains backslash
+  ../escape       ← path traversal
+  skill name      ← contains space
+                  ← empty
+  -leading-dash   ← (technically matches pattern, but see notes below)
+```
+
+</Accordion>
+
+<Note>
+  The slug must match the `skill_name` field in the skill manifest, the ZIP
+  filename (without the `.zip` extension), and the installed folder name under
+  `/mnt/data/GPT.SKILLS/SKILLS/`. All four must be identical.
+</Note>
+
+---
+
+## Wrapper directory rule
+
+A skill ZIP must **not** use a single wrapper directory as the ZIP root. `MANIFEST.json` must appear at the ZIP root level — it must not be nested inside a folder that shares the package name.
+
+<Tabs>
+  <Tab title="Correct (flat root)">
+
+```text
+csv-profiler.zip
+  MANIFEST.json       ← at ZIP root ✓
+  SKILL.md
+  docs/
+    columns.md
+  tools/
+    profile_csv.py
+```
+
+  </Tab>
+  <Tab title="Incorrect (wrapper directory)">
+
+```text
+csv-profiler.zip
+  csv-profiler/       ← single wrapper directory ✗
+    MANIFEST.json
+    SKILL.md
+    docs/
+      columns.md
+```
+
+  </Tab>
+</Tabs>
+
+The presence of a single wrapper directory causes a **hard fail** during `SKILL <name> UNPACK`. Internal subdirectories within the package are fully supported — the restriction applies only to a single top-level wrapper that surrounds the entire package.

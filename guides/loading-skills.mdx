@@ -1,0 +1,155 @@
+---
+title: "Unpack and load skills in a ChatGPT Project session"
+sidebarTitle: "Loading Skills"
+description: "Learn how to unpack and load skill packages into your ChatGPT Project session using explicit lifecycle commands and what happens at each step."
+---
+
+The GPT Project Skill System installs and activates skill packages through two distinct steps: **UNPACK** and **LOAD**. This guide covers both command forms, exactly what each step does, how to load multiple skills, and which conditions cause a hard failure at each stage.
+
+<Note>
+  Skill ZIP files present in your ChatGPT Project are completely inert until you issue an explicit UNPACK command. Presence does not imply install, validation, load, or activation of any kind.
+</Note>
+
+## Command forms
+
+Both natural language and explicit syntax are understood by the system. Use whichever form fits your workflow.
+
+**Natural language**
+
+> Unpack the skill-adapter skill.
+
+> Load the skill-adapter skill.
+
+**Explicit command syntax**
+
+```
+SKILL skill-adapter UNPACK
+SKILL skill-adapter LOAD
+```
+
+Both forms trigger the same lifecycle behavior. The explicit syntax is unambiguous and is the canonical reference form used throughout this documentation.
+
+---
+
+## The UNPACK step
+
+`SKILL <name> UNPACK` physically installs a skill package from its ZIP file into the skill directory. The skill is available on disk after this step but is **not yet semantically active**.
+
+### What UNPACK does
+
+<Steps>
+  <Step title="Validate the skill slug">
+    The `<name>` you provide is validated as a skill slug. A valid slug contains only characters matching `[a-z0-9_-]`, is not empty, and contains no spaces, dots, forward slashes, backslashes, or `..` sequences.
+  </Step>
+  <Step title="Verify the ZIP filename">
+    The system confirms the skill ZIP filename is exactly `<name>.zip`. If the filename does not match the slug you provided, the command fails immediately.
+  </Step>
+  <Step title="Verify ZIP structure">
+    The ZIP must have `MANIFEST.json` at its root and must not contain a single wrapper directory surrounding the package contents. A flat-at-root ZIP is required — internal subdirectories are allowed, but the package itself must not be nested inside an outer folder.
+  </Step>
+  <Step title="Verify manifest identity">
+    The `skill_name` field inside `MANIFEST.json` must equal `<name>`. The ZIP name, command slug, installed folder, and manifest `skill_name` must all match.
+  </Step>
+  <Step title="Extract the package">
+    The skill ZIP is extracted into `/mnt/data/GPT.SKILLS/SKILLS/<name>/`. If a previous extraction of the same skill already exists there, it is overwritten.
+  </Step>
+</Steps>
+
+After a successful UNPACK, the skill is physically installed. The model has not read any of its files yet.
+
+### Hard fail conditions for UNPACK
+
+The command fails immediately if any of the following are true:
+
+| Condition | What triggers it |
+|---|---|
+| Slug violation | `<name>` contains spaces, dots, slashes, backslashes, or `..` |
+| ZIP filename mismatch | The ZIP file is not named `<name>.zip` |
+| `skill_name` mismatch | `skill_name` in `MANIFEST.json` does not equal `<name>` |
+| Wrapper directory | The ZIP has a single wrapper directory surrounding all package contents |
+| Install path mismatch | The extracted tree would not land at `/mnt/data/GPT.SKILLS/SKILLS/<name>/` |
+
+---
+
+## The LOAD step
+
+`SKILL <name> LOAD` reads the installed skill and makes it semantically active in the current session. This is the step that gives the model access to the skill's instructions.
+
+### What LOAD does
+
+<Steps>
+  <Step title="Confirm the skill is installed">
+    The command checks that the skill has been unpacked into `/mnt/data/GPT.SKILLS/SKILLS/<name>/`. LOAD does **not** auto-unpack — if the skill is not already installed, the command fails.
+  </Step>
+  <Step title="Read the skill manifest">
+    The loader reads `MANIFEST.json` from the installed path to determine the skill's entry point and load sequence.
+  </Step>
+  <Step title="Resolve the load sequence">
+    If `load_sequence` is declared in the manifest, those files are used. If the manifest omits both `primary_file` and `load_sequence`, the loader falls back to `SKILL.md` at the package root. Providing only one of the two fields is invalid.
+  </Step>
+  <Step title="Mount files and activate">
+    Files listed in `load_sequence` are read and semantically inserted into the current session. The skill is now active — the model can draw on its instructions when relevant to your work.
+  </Step>
+</Steps>
+
+<Info>
+  Only files declared in `load_sequence` are mounted as active skill instructions. Files declared in `support_files`, `tool_files`, and `asset_files` are physically available in `/mnt` after UNPACK, but they are not automatically treated as active session context.
+</Info>
+
+Calling `SKILL <name> LOAD` on an already-active skill performs a **full semantic reload** — the skill files are re-read and the session context is refreshed.
+
+### Hard fail conditions for LOAD
+
+| Condition | What triggers it |
+|---|---|
+| Skill not unpacked | The expected path `/mnt/data/GPT.SKILLS/SKILLS/<name>/` does not exist |
+| Missing `MANIFEST.json` | The manifest file is absent or not valid JSON |
+| Missing `primary_file` | The file declared as `primary_file` is not present after unpack |
+| Missing load sequence file | Any file listed in `load_sequence` is absent or not a readable UTF-8 text file |
+| Required file is a directory | A path in `load_sequence` resolves to a directory rather than a file |
+
+---
+
+## Loading multiple skills
+
+Multiple skills can be active in the same session. Load each one individually after unpacking.
+
+```
+SKILL skill-adapter UNPACK
+SKILL my-writing-tool UNPACK
+
+SKILL skill-adapter LOAD
+SKILL my-writing-tool LOAD
+```
+
+Both skills are now semantically active. The model weighs the entire active skill pool against your current task. See the [Session Lifecycle guide](/guides/session-lifecycle) for advice on managing focus across skills.
+
+---
+
+## Full example: installing skill-adapter
+
+```
+SKILL skill-adapter UNPACK
+SKILL skill-adapter LOAD
+```
+
+**After UNPACK:**
+- `dist/skills/skill-adapter.zip` is validated and extracted to `/mnt/data/GPT.SKILLS/SKILLS/skill-adapter/`
+- `MANIFEST.json`, `SKILL.md`, `references/`, and `scripts/` are all physically present on disk
+- The skill is **not yet active**
+
+**After LOAD:**
+- The manifest is read; `load_sequence` resolves to `["SKILL.md"]`
+- `SKILL.md` is mounted into the current session
+- The skill is **semantically active** — the model can use it
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Session Lifecycle" icon="rotate" href="/guides/session-lifecycle">
+    Understand the full boot sequence: core unpack, skill load order, focus changes, and when to start a new chat.
+  </Card>
+  <Card title="Skill Adapter" icon="wrench" href="/guides/skill-adapter">
+    Use the bundled skill-adapter skill to inspect and adapt external skill packages for this system.
+  </Card>
+</CardGroup>

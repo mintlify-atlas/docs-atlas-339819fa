@@ -1,0 +1,238 @@
+---
+title: "Lifecycle command reference: UNPACK and LOAD"
+sidebarTitle: "Commands"
+description: "Full reference for SKILL CORE UNPACK, SKILL <name> UNPACK, and SKILL <name> LOAD commands — behavior, validation, hard fail conditions, and slug rules."
+---
+
+The GPT Project Skill System exposes three explicit lifecycle commands that control how the core and individual skill packages are bootstrapped, installed, and activated within a session. This page covers each command's purpose, step-by-step behavior, hard fail conditions, and valid invocation syntax.
+
+---
+
+## Command target boundaries
+
+Each lifecycle command may operate **only on its declared target**. The runtime must not pre-scan, pre-validate, compile, inspect, or infer capability from packages that were not named by an explicit lifecycle command.
+
+<Warning>
+  Skill ZIP files present among Project sources are **inert** until an explicit
+  `SKILL <name> UNPACK` command is issued. Presence in Project sources does not
+  imply install, validation, load, activation, mount, pre-scan, or tool
+  availability.
+</Warning>
+
+| Command | Target |
+|---|---|
+| `SKILL CORE UNPACK` | `GPT.SKILLS.zip` only |
+| `SKILL <name> UNPACK` | `<name>.zip` only |
+| `SKILL <name> LOAD` | Installed skill at `/mnt/data/GPT.SKILLS/SKILLS/<name>/` only |
+
+`SKILL CORE UNPACK` must not unpack, inspect, validate, load, compile, or activate any skill package. `SKILL <name> UNPACK` targets only its named ZIP. `SKILL <name> LOAD` targets only the already-installed skill folder — it does not auto-unpack.
+
+---
+
+## SKILL CORE UNPACK
+
+Boots the core from `GPT.SKILLS.zip` and activates it for the current session.
+
+### Behavior
+
+The command executes the following steps in order:
+
+1. Removes `/mnt/data/GPT.SKILLS/` before extraction.
+2. Removes any legacy `/mnt/data/sistema_madre/` before extraction.
+3. Extracts `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`.
+4. Does **not** fall back to `/mnt/data/sistema_madre/`.
+5. Validates `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json`.
+6. Validates and mounts all files declared in the manifest.
+7. Activates the core for the current session.
+
+### Hard fail conditions
+
+<Warning>
+  Hard fail if core unpack produces any extraction root other than
+  `/mnt/data/GPT.SKILLS/`. There is no fallback path.
+</Warning>
+
+### Re-running the command
+
+Re-running `SKILL CORE UNPACK` in the same chat **resets the active semantic state**. Any skills that were previously loaded are no longer considered active after the command completes. The session begins fresh from the newly unpacked core.
+
+### Natural-language aliases
+
+The command also accepts natural-language phrasings such as:
+
+- `"Unpack GPT.SKILLS"`
+- `"Boot the skill system"`
+- `"Initialize GPT.SKILLS"`
+
+### Example
+
+```text
+SKILL CORE UNPACK
+```
+
+---
+
+## SKILL \<name\> UNPACK
+
+Installs a skill package physically into the skill directory. This command does **not** make the skill semantically active — it only prepares it for a later `SKILL <name> LOAD`.
+
+### Slug rules for \<name\>
+
+The `<name>` slug must satisfy all of the following:
+
+- Matches the pattern `^[a-z0-9_-]+$`
+- Is not empty
+- Contains no spaces
+- Contains no `.` characters
+- Contains no `/` or `\` characters
+- Is not and does not contain `..`
+
+<Accordion title="Valid and invalid slug examples">
+
+```text
+Valid slugs:
+  csv-profiler
+  skill_adapter
+  summarizer
+  my-tool-v2
+
+Invalid slugs:
+  My_Skill       (uppercase letter)
+  csv.profiler   (contains dot)
+  csv/profiler   (contains slash)
+  ../escape      (path traversal)
+  skill name     (contains space)
+                 (empty)
+```
+
+</Accordion>
+
+### Behavior
+
+1. Validates `<name>` as a skill slug (pattern + character rules above).
+2. Verifies that the skill ZIP filename is exactly `<name>.zip`.
+3. Verifies that the skill ZIP has `MANIFEST.json` at its root with no single wrapper directory.
+4. Verifies that `skill_name` in the skill manifest equals `<name>`.
+5. Extracts the skill ZIP into `/mnt/data/GPT.SKILLS/SKILLS/<name>/`.
+6. Overwrites the previous extracted copy if one exists for the same skill name.
+7. Validates the package sufficiently to support a later `SKILL <name> LOAD`.
+
+### ZIP flat-root requirement
+
+The skill ZIP must be **flat at root**:
+
+- `MANIFEST.json` must be at the ZIP root level — not inside a subdirectory.
+- No single wrapper directory may surround the package.
+- Safe internal folders within the package are allowed.
+
+<Tabs>
+  <Tab title="Valid ZIP layout">
+
+```text
+csv-profiler.zip
+  MANIFEST.json       ← at ZIP root ✓
+  SKILL.md
+  docs/
+    columns.md
+  tools/
+    profile_csv.py
+```
+
+  </Tab>
+  <Tab title="Invalid ZIP layout (wrapper directory)">
+
+```text
+csv-profiler.zip
+  csv-profiler/       ← single wrapper directory ✗
+    MANIFEST.json
+    SKILL.md
+```
+
+  </Tab>
+</Tabs>
+
+### Hard fail conditions
+
+| Condition | Effect |
+|---|---|
+| `<name>` violates the slug rule | Hard fail |
+| ZIP filename is not `<name>.zip` | Hard fail |
+| `skill_name` in skill manifest does not equal `<name>` | Hard fail |
+| Install path would not be `/mnt/data/GPT.SKILLS/SKILLS/<name>/` | Hard fail |
+| ZIP contains a single wrapper directory around the package | Hard fail |
+
+### After unpack
+
+The skill is **physically installed** but **not semantically active**. A skill folder present under `/mnt/data/GPT.SKILLS/SKILLS/` means the skill is installed. It does not mean the skill is loaded or usable in the current session. Only `SKILL <name> LOAD` activates it.
+
+### Example
+
+```text
+SKILL csv-profiler UNPACK
+```
+
+---
+
+## SKILL \<name\> LOAD
+
+Mounts an already-installed skill into the current session, making it semantically active.
+
+### Behavior
+
+1. Does **not** auto-unpack the skill. The skill must have been previously unpacked.
+2. Fails if the skill has not been extracted into `/mnt/data/GPT.SKILLS/SKILLS/<name>/`.
+3. Reads the skill `MANIFEST.json`.
+4. Reads the files in the skill's `load_sequence`, or falls back to `SKILL.md` if `load_sequence` is omitted.
+5. Makes the skill semantically active in the current session.
+
+<Note>
+  `SKILL <name> LOAD` requires a prior `SKILL <name> UNPACK` in the same or a
+  previous session. There is no automatic install path — if the skill folder is
+  absent, the command hard fails.
+</Note>
+
+### Reloading
+
+Calling `SKILL <name> LOAD` on an already-loaded skill performs a **full semantic reload** — the manifest and load sequence are re-read from disk and the skill's semantic state is refreshed.
+
+### After load
+
+The skill is **semantically active in the current session only**. Active means the model has read the mounted skill files and will use them when relevant to the current task. Active does not mean the skill intercepts requests, runs hooks, watches files, or persists outside the current session.
+
+<Info>
+  Session scope is strict: the active semantic set exists only in the current
+  chat. Nothing persists across chats or across sessions. To reactivate skills
+  in a new chat, run `SKILL CORE UNPACK` followed by the required `SKILL <name>
+  LOAD` commands.
+</Info>
+
+### Example
+
+```text
+SKILL csv-profiler LOAD
+```
+
+---
+
+## Complete session example
+
+The following shows a typical boot-and-load sequence for a session that uses two skills:
+
+```text
+# Step 1 — boot the core
+SKILL CORE UNPACK
+
+# Step 2 — install skill packages (only needed once per session or after update)
+SKILL csv-profiler UNPACK
+SKILL summarizer UNPACK
+
+# Step 3 — activate the skills for this session
+SKILL csv-profiler LOAD
+SKILL summarizer LOAD
+```
+
+<Tip>
+  Load only the skills you need for the current work focus. Excess active
+  context degrades session focus. When the work changes materially, open a new
+  chat and repeat the targeted boot/load cycle.
+</Tip>

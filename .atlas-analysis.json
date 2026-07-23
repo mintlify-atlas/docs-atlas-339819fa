@@ -1,0 +1,70 @@
+{
+  "projectType": "general",
+  "projectName": "GPT Project Skill System",
+  "projectDescription": "A session-scoped skill loader for ChatGPT Projects that lets you package reusable skills as ZIP files, unpack them at runtime, and mount only what you need into the active session.",
+  "theme": "luma",
+  "primaryColor": "#6C47FF",
+  "lightColor": "#EDE9FF",
+  "darkColor": "#3A1FAD",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "Using Skills",
+            "pages": [
+              "guides/loading-skills",
+              "guides/session-lifecycle",
+              "guides/skill-adapter"
+            ]
+          },
+          {
+            "group": "Building Skills",
+            "pages": [
+              "guides/skill-package-format",
+              "guides/adapting-a-skill",
+              "guides/packaging-and-build"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/commands",
+              "reference/manifest-schema",
+              "reference/path-rules",
+              "reference/runtime-limits"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Session-scoped skill activation — skills are active only in the current chat, with no permanent install",
+    "ZIP-based skill packages with a declarative MANIFEST.json",
+    "Explicit lifecycle commands: SKILL CORE UNPACK, SKILL <name> UNPACK, SKILL <name> LOAD",
+    "Support for fallback (simple) and explicit (structured) skill package modes",
+    "Build script with full package validation (paths, manifests, ZIP safety, UTF-8 checks)",
+    "Bundled skill-adapter for inspecting and adapting external skill packages",
+    "Clear runtime boundary: no hooks, watchers, daemons, or persistent state",
+    "Cooperative multi-skill composition within a single session"
+  ],
+  "publicApiSurface": [
+    "SKILL CORE UNPACK",
+    "SKILL <name> UNPACK",
+    "SKILL <name> LOAD",
+    "MANIFEST.json (core schema: system_name, version, primary_file, load_sequence, optional_load_sequence)",
+    "MANIFEST.json (skill schema: skill_name, version, primary_file, load_sequence, support_files, tool_files, asset_files, capabilities, runtime_hints)",
+    "scripts/build_packages.py",
+    "skill_sources/skill-adapter/scripts/inspect_skill_candidate.py"
+  ]
+}

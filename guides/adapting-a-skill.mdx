@@ -1,0 +1,281 @@
+---
+title: "Adapt an external skill for GPT Project Skill System"
+sidebarTitle: "Adapting a Skill"
+description: "Step-by-step guide to wrapping an external text-based skill into a compatible package with the correct ZIP structure, MANIFEST.json, and identity rules."
+---
+
+Adapting an external skill for the GPT Project Skill System means wrapping existing text-based skill content into a ZIP package the loader can unpack and mount. This page walks through the entire process — choosing a slug, building the manifest, structuring the ZIP, and loading the result — and explains what to preserve, what to change, and what to avoid.
+
+## Adaptation philosophy
+
+The guiding principle is **preservation-first**. Change only what is required for the skill to work correctly as a loadable package. The loader does not require a specific folder taxonomy, naming convention, or structural transformation beyond the rules below.
+
+### What to preserve
+
+- The original body text of `SKILL.md` and any companion documents.
+- The original folder structure and file names, whenever they are path-safe.
+- The original intent and tone of the skill content.
+
+### What to change
+
+Only make changes required for one of these specific reasons:
+
+| Reason | Examples |
+|---|---|
+| Path safety | Remove `..`, backslashes, drive letters, empty segments |
+| ZIP safety | Eliminate a wrapper directory; ensure `MANIFEST.json` is at ZIP root |
+| GPT Project / mnt compatibility | Ensure paths resolve correctly under `/mnt/data/GPT.SKILLS/` |
+| Code Interpreter compatibility | Ensure tool files are UTF-8 and stdlib-only |
+| Manifest identity | Align ZIP filename, command slug, folder name, and `skill_name` |
+| Semantic mount clarity | Move binary or script files out of `load_sequence` |
+
+### What to avoid
+
+- Rewriting the skill into a mini-framework.
+- Reorganizing folders into a system-specific taxonomy.
+- Adding bootstrap rules or loader lifecycle hooks.
+- Duplicating rules already defined in the core operational rules.
+- Adding marketplace or auto-install assumptions.
+
+---
+
+## Packaging steps
+
+<Steps>
+  <Step title="Choose a slug">
+    Pick a slug for the skill name. The slug must match `^[a-z0-9_-]+$` — lowercase letters, digits, hyphens, and underscores only.
+
+    ```text
+    summarizer        ✓ valid
+    legal-review      ✓ valid
+    csv_profiler      ✓ valid
+    My Skill          ✗ invalid (uppercase, space)
+    skill.name        ✗ invalid (dot)
+    ../escape         ✗ invalid (traversal)
+    ```
+
+    The slug you choose becomes the ZIP filename, the command name, and the installed folder name — all four must match.
+  </Step>
+  <Step title="Create the package folder and primary skill file">
+    Create a folder named after your slug and add `MANIFEST.json` inside it.
+
+    - **Fallback mode** — the primary file must be a root-level `SKILL.md`:
+
+      ```text
+      summarizer/
+        MANIFEST.json
+        SKILL.md
+      ```
+
+    - **Explicit manifest mode** — the primary file may be any safe relative UTF-8 textual file:
+
+      ```text
+      csv-profiler/
+        MANIFEST.json
+        SKILL.md
+        docs/
+          columns.md
+        tools/
+          profile_csv.py
+        templates/
+          template.csv
+      ```
+
+    Preserve the original folder structure of the source skill wherever it is safe to do so.
+  </Step>
+  <Step title="Verify skill_name matches the slug">
+    Open `MANIFEST.json` and confirm `skill_name` is exactly the slug you chose in step 1.
+
+    ```json
+    {
+      "skill_name": "summarizer",
+      "version": "1.0"
+    }
+    ```
+
+    The `version` field must be a non-empty string. No specific format is enforced.
+  </Step>
+  <Step title="Verify the ZIP filename">
+    The ZIP you will create must be named `<skill_name>.zip`. For a skill named `summarizer`, that is `summarizer.zip`. A mismatch between the ZIP name and `skill_name` is a hard fail at unpack.
+  </Step>
+  <Step title="Add explicit manifest fields if needed">
+    If you are using **explicit manifest mode**, declare `primary_file` and `load_sequence`. Both must be present — providing only one is invalid.
+
+    ```json
+    {
+      "skill_name": "csv-profiler",
+      "version": "1.0",
+      "primary_file": "SKILL.md",
+      "load_sequence": ["SKILL.md"],
+      "support_files": ["docs/columns.md"],
+      "tool_files": ["tools/profile_csv.py"],
+      "asset_files": ["templates/template.csv"],
+      "capabilities": ["csv analysis"],
+      "runtime_hints": {"uses_python": true}
+    }
+    ```
+
+    Rules for each category:
+
+    - `load_sequence` — must include `primary_file`; AI-only textual UTF-8 files only; no scripts or binary assets; no overlap with `support_files`.
+    - `support_files` — supplemental references available after unpack, not mounted automatically.
+    - `tool_files` — Python scripts available after unpack; never mounted or run automatically; stdlib and existing GPT packages only.
+    - `asset_files` — data, templates, or media files available after unpack; not mounted automatically.
+  </Step>
+  <Step title="Create the ZIP with MANIFEST.json at root">
+    Zip the contents of the package folder so that `MANIFEST.json` appears at the ZIP root. Do not zip the folder itself — that creates a wrapper directory, which is a hard fail.
+
+    ```bash
+    # From inside the package folder:
+    zip -r ../summarizer.zip .
+
+    # Or from the parent directory, specifying contents:
+    cd summarizer && zip -r ../summarizer.zip *
+    ```
+
+    Internal folders with path-safe names are allowed inside the ZIP.
+  </Step>
+  <Step title="Confirm there is no wrapper directory">
+    Open the ZIP and check that the first level contains `MANIFEST.json` directly — not a single folder wrapping everything.
+
+    **Valid ZIP root**
+
+    ```text
+    summarizer.zip
+      MANIFEST.json
+      SKILL.md
+    ```
+
+    **Invalid ZIP root (wrapper directory)**
+
+    ```text
+    summarizer.zip
+      summarizer/
+        MANIFEST.json
+        SKILL.md
+    ```
+  </Step>
+  <Step title="Upload and load the skill">
+    Upload the ZIP to your ChatGPT Project, then run the two lifecycle commands in the same session:
+
+    ```text
+    SKILL <name> UNPACK
+    SKILL <name> LOAD
+    ```
+
+    `UNPACK` installs the package physically. `LOAD` mounts the files in `load_sequence` (or the fallback `SKILL.md`) into the active session context.
+  </Step>
+</Steps>
+
+---
+
+## Requirements and dependencies
+
+Put real runtime requirements in the body of `SKILL.md` as plain text. This keeps dependency claims human-readable without forcing the loader to validate capabilities it cannot guarantee.
+
+```markdown
+## Requirements
+
+- Needs access to uploaded source files.
+- Uses only Project-visible files.
+- No internet required.
+```
+
+<Note>
+  Do not use `capabilities` or `runtime_hints` as a dependency specification. Those fields are lightweight descriptive metadata and do not create any validation, authorization, or routing guarantees at load time.
+</Note>
+
+---
+
+## Valid and invalid package examples
+
+### Valid — fallback mode
+
+```text
+summarizer.zip
+  MANIFEST.json
+  SKILL.md
+```
+
+```json
+{
+  "skill_name": "summarizer",
+  "version": "1.0"
+}
+```
+
+```markdown
+# Summarizer
+
+Summarize long text while preserving key decisions, constraints, and unresolved questions.
+
+## Requirements
+
+- Needs access to the source text.
+- No internet required.
+```
+
+### Invalid — wrapper directory
+
+```text
+summarizer.zip
+  summarizer/
+    MANIFEST.json
+    SKILL.md
+```
+
+The loader finds a single root folder instead of `MANIFEST.json` and hard fails.
+
+### Invalid — ZIP and manifest name mismatch
+
+```text
+reviewer.zip          ← ZIP filename
+```
+
+```json
+{
+  "skill_name": "summarizer"   ← does not match ZIP filename
+}
+```
+
+```text
+SKILL summarizer UNPACK        ← command slug also mismatches
+```
+
+All four identity points — command slug, ZIP filename, installed folder, and `skill_name` — must agree.
+
+---
+
+## Adaptation checklist
+
+<Accordion title="Adaptation checklist">
+  - `MANIFEST.json` exists in the package.
+  - Fallback mode: root `SKILL.md` exists.
+  - Explicit manifest mode: declared `primary_file` exists and is included in `load_sequence`.
+  - ZIP is flat — `MANIFEST.json` is at root, no single wrapper directory.
+  - ZIP filename is `<skill_name>.zip`.
+  - Command slug equals `skill_name`.
+  - `skill_name` follows `^[a-z0-9_-]+$`.
+  - `version` is a non-empty string.
+  - `MANIFEST.json` is valid UTF-8 JSON.
+  - Declared load files are AI-only textual (UTF-8 text or Markdown) files.
+  - Internal paths are safe relative paths — no `..`, no backslashes, no drive letters, no empty segments.
+  - `support_files` does not overlap with `load_sequence`.
+  - `tool_files` are not mounted and not run automatically.
+  - Tool files use only Python stdlib or packages already available in the GPT environment — no `pip install`, no network install.
+  - No pip install or network install is required by any declared file.
+  - The skill does not redefine core operational rules.
+</Accordion>
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Package Format" icon="file-code" href="/guides/skill-package-format">
+    Full reference for ZIP structure, MANIFEST.json fields, file categories, and path rules.
+  </Card>
+  <Card title="Packaging & Build" icon="box" href="/guides/packaging-and-build">
+    Automate package building and validation with the build script.
+  </Card>
+</CardGroup>

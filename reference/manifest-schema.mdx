@@ -1,0 +1,252 @@
+---
+title: "MANIFEST.json schema for core and skill packages"
+sidebarTitle: "Manifest Schema"
+description: "Complete schema reference for the core and skill MANIFEST.json files — required fields, optional fields, fallback behavior, and invalidity conditions."
+---
+
+Every package in the GPT Project Skill System is described by a `MANIFEST.json` file. This page documents both schemas in full: the **core manifest** that lives in `SYSTEM_CORE/` and the **skill manifest** that lives at the root of each skill package. It also covers fallback behavior, invalidity conditions that cause a hard fail, and a real-world skill manifest example.
+
+---
+
+## Core manifest
+
+The core manifest is located at `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json` after `SKILL CORE UNPACK`. It controls which files are mounted during core activation.
+
+### Current manifest
+
+```json
+{
+  "system_name": "gpt_project_skill_system",
+  "version": "0.6",
+  "primary_file": "ENTRY.md",
+  "load_sequence": [
+    "ENTRY.md",
+    "README.md",
+    "SEMANTICS.md",
+    "OPERATIONAL_RULES.md"
+  ],
+  "optional_load_sequence": []
+}
+```
+
+### Core manifest fields
+
+All five fields are **required**. A missing or type-invalid field causes a hard fail.
+
+<ParamField path="system_name" type="string" required>
+  Must be exactly `gpt_project_skill_system`. Any other value is a manifest
+  invalidity and causes hard fail.
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  Must be exactly `"0.6"` for core version 0.6. Any other value causes hard
+  fail. This is a string, not a number.
+</ParamField>
+
+<ParamField path="primary_file" type="string" required>
+  The entry point for the core. Must satisfy all of the following:
+
+  - A direct filename — no subdirectory component.
+  - Must be included in `load_sequence`.
+  - Must have a `.md` or `.json` extension.
+</ParamField>
+
+<ParamField path="load_sequence" type="array of strings" required>
+  Ordered list of files mounted during core activation. Must satisfy all of the
+  following:
+
+  - Non-empty array.
+  - Each entry is a direct filename (no subdirectory).
+  - Allowed extensions: `.md` and `.json` only.
+  - No duplicate entries.
+  - Must include `primary_file`.
+  - Must not overlap with `optional_load_sequence`.
+</ParamField>
+
+<ParamField path="optional_load_sequence" type="array of strings" required>
+  Ordered list of files mounted only if present and UTF-8 readable. May be an
+  empty array. When a file in this list is missing or not UTF-8, the loader
+  emits a technical warning, skips that file, and continues — this is a
+  degraded load, not a hard fail. Must satisfy all of the following:
+
+  - Each entry is a direct filename (no subdirectory).
+  - Allowed extensions: `.md` and `.json` only.
+  - No duplicate entries.
+  - Must not overlap with `load_sequence`.
+</ParamField>
+
+---
+
+## Skill manifest
+
+The skill manifest is located at `MANIFEST.json` at the **root** of each skill ZIP and at `/mnt/data/GPT.SKILLS/SKILLS/<name>/MANIFEST.json` after unpack.
+
+### Required skill manifest fields
+
+<ParamField path="skill_name" type="string" required>
+  The canonical name of the skill. Must satisfy all of the following:
+
+  - Non-empty string.
+  - Matches the pattern `^[a-z0-9_-]+$`.
+  - Equals the command slug `<name>` used in `SKILL <name> UNPACK` and `SKILL <name> LOAD`.
+  - Equals the ZIP filename stem — the file must be named `<skill_name>.zip`.
+  - Equals the installed folder name — the skill is extracted to `/mnt/data/GPT.SKILLS/SKILLS/<skill_name>/`.
+
+  All four identifiers — `skill_name`, command slug, ZIP filename, and installed folder — must match exactly.
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  The version of this skill package. Must be a non-empty string. No specific
+  format is enforced, but the field must be present and non-empty.
+</ParamField>
+
+### Optional skill manifest fields
+
+<ParamField path="primary_file" type="string">
+  The entry point for this skill. Must be a safe relative path. **Must be
+  present if and only if `load_sequence` is also present.** Providing only one
+  of `primary_file` or `load_sequence` is a manifest invalidity and causes hard
+  fail.
+
+  - Must be included in `load_sequence`.
+  - Must point to a UTF-8 textual file, not a script or binary asset.
+</ParamField>
+
+<ParamField path="load_sequence" type="array of strings">
+  Ordered list of AI-only textual files mounted during `SKILL <name> LOAD`.
+  **Must be present if and only if `primary_file` is also present.** Must
+  satisfy all of the following:
+
+  - Non-empty array when present.
+  - Each entry is a safe relative path.
+  - Must include `primary_file`.
+  - Every declared file must exist after unpack and be a file target (not a directory).
+  - Every entry must be a UTF-8 textual file.
+  - Must not include scripts intended for execution or binary assets.
+  - Must not overlap with `support_files`.
+</ParamField>
+
+<ParamField path="support_files" type="array of strings">
+  Supplemental reference files that are physically available after unpack but
+  **not mounted automatically**. These are consulted only when needed during a
+  session. Must satisfy:
+
+  - Each entry is a safe relative path.
+  - Every declared file must exist after unpack and be a file target.
+  - Must not overlap with `load_sequence`.
+</ParamField>
+
+<ParamField path="tool_files" type="array of strings">
+  Script or tool files physically available after unpack. These are **never
+  mounted automatically and never run automatically**. The Python environment
+  may execute them when explicitly invoked. Must satisfy:
+
+  - Each entry is a safe relative path.
+  - Every declared file must exist after unpack, be a file target, and be UTF-8 text.
+  - Tools may use only the Python standard library or packages already available in the current GPT Python environment. No `pip install`. No network install.
+</ParamField>
+
+<ParamField path="asset_files" type="array of strings">
+  Data, template, media, or other files physically available after unpack.
+  **Never mounted automatically.** May be non-textual when used as files by the
+  environment. Must satisfy:
+
+  - Each entry is a safe relative path.
+  - Every declared file must exist after unpack and be a file target.
+</ParamField>
+
+<ParamField path="capabilities" type="array of strings">
+  Lightweight descriptive metadata listing what this skill can do. Does not
+  create routing, authorization, dependency management, or automatic tool
+  access. If present, must be an array of strings. An invalid type produces a
+  warning and is ignored — it does not cause hard fail.
+</ParamField>
+
+<ParamField path="runtime_hints" type="object">
+  Lightweight descriptive metadata as a JSON object. Not a control plane. Does
+  not affect mount behavior, create dependencies, or authorize tool access. If
+  present, must be a JSON object. An invalid type produces a warning and is
+  ignored — it does not cause hard fail.
+</ParamField>
+
+---
+
+## Fallback behavior
+
+When both `primary_file` and `load_sequence` are **omitted** from the skill manifest, the loader activates fallback mode:
+
+```json
+{
+  "primary_file": "SKILL.md",
+  "load_sequence": ["SKILL.md"]
+}
+```
+
+In fallback mode, a `SKILL.md` file at the **root** of the skill package is required. If it is missing, the load hard fails.
+
+<Note>
+  Fallback mode applies only to skill packages, not to the core. The core
+  `load_sequence` is always required and may never be omitted.
+</Note>
+
+<Warning>
+  Providing **only one** of `primary_file` or `load_sequence` is a manifest
+  invalidity. They must either both be present or both be omitted.
+</Warning>
+
+---
+
+## Manifest invalidity — hard fail conditions
+
+Any of the following conditions renders a manifest invalid and causes an immediate hard fail:
+
+<Accordion title="Core and skill manifest invalidity conditions">
+
+- Missing required field (`system_name`, `version`, `primary_file`, `load_sequence`, `optional_load_sequence` for core; `skill_name`, `version` for skill)
+- Invalid field type (e.g., `load_sequence` is not an array of strings)
+- `system_name` is not `gpt_project_skill_system` *(core only)*
+- `version` is not `"0.6"` *(core only)*
+- Duplicate entries inside `load_sequence`
+- Duplicate entries inside `optional_load_sequence`
+- Overlap between `load_sequence` and `optional_load_sequence` *(core)*
+- Overlap between `load_sequence` and `support_files` *(skill)*
+- Any path that is absolute (begins with `/`)
+- Any path that contains `..`
+- Unsupported mounted file extension (core: only `.md` and `.json` are allowed)
+- Providing only one of `primary_file` or `load_sequence` *(skill)*
+
+</Accordion>
+
+Unknown manifest fields are ignored or warned. They are not mounted and do not cause hard fail.
+
+---
+
+## Skill manifest example — skill-adapter
+
+The following is the real manifest from the `skill-adapter` skill package:
+
+```json
+{
+  "skill_name": "skill-adapter",
+  "version": "0.1.0",
+  "primary_file": "SKILL.md",
+  "load_sequence": ["SKILL.md"],
+  "support_files": ["references/adaptation_report_schema.md"],
+  "tool_files": ["scripts/inspect_skill_candidate.py"],
+  "asset_files": [],
+  "capabilities": ["skill-adaptation", "compatibility-review", "manifest-drafting"],
+  "runtime_hints": {
+    "uses_python": true,
+    "output": "candidate package plan plus compatibility report"
+  }
+}
+```
+
+In this manifest:
+
+- `skill_name` is `skill-adapter`, so the ZIP must be `skill-adapter.zip` and the command slug must be `skill-adapter`.
+- `SKILL.md` is explicitly declared as both `primary_file` and the sole entry in `load_sequence` — it is mounted during `SKILL skill-adapter LOAD`.
+- `references/adaptation_report_schema.md` is in `support_files` — available after unpack but not auto-mounted.
+- `scripts/inspect_skill_candidate.py` is in `tool_files` — physically available after unpack, never auto-run.
+- `asset_files` is an empty array — no asset files in this package.
+- `capabilities` and `runtime_hints` are descriptive metadata only.

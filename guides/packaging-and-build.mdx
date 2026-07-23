@@ -1,0 +1,291 @@
+---
+title: "Build and package skills with the build script"
+sidebarTitle: "Packaging & Build"
+description: "Use build_packages.py to build validated runtime ZIPs for the core and all skill sources. Covers validation rules, ZIP path requirements, and adding new skills."
+---
+
+The GPT Project Skill System ships a build script that compiles every runtime package from source, validates each one against the full set of package rules, and writes ready-to-upload ZIPs into the `dist/` directory. This page covers how to run the build script, what it validates, the ZIP path requirements it enforces, and how to add a new skill source so it is picked up automatically on the next build.
+
+## Running the build script
+
+From the repository root, run:
+
+```bash
+python scripts/build_packages.py
+```
+
+On a successful build you will see one line per output file:
+
+```text
+built dist/GPT.SKILLS.zip
+built dist/skills/skill-adapter.zip
+```
+
+The script creates `dist/` and `dist/skills/` if they do not exist. It overwrites any previously built ZIPs.
+
+<Warning>
+  The build script hard fails with a clear `ERROR:` message on any validation issue. Nothing is written for the failing package. Fix the reported problem and re-run — partial output is never produced.
+</Warning>
+
+---
+
+## What the build script produces
+
+| Output | Source | Description |
+|---|---|---|
+| `dist/GPT.SKILLS.zip` | `GPT.SKILLS/` | The core runtime package loaded by `SKILL CORE UNPACK`. |
+| `dist/skills/<name>.zip` | `skill_sources/<name>/` | One ZIP per skill source directory that contains a `MANIFEST.json`. |
+
+---
+
+## Core ZIP structure requirements
+
+The core package must have exactly two top-level entries in the ZIP: `SYSTEM_CORE/` and `SKILLS/`. It must **not** contain a `GPT.SKILLS/` wrapper folder. If a wrapper is present, the runtime extracts to the wrong path:
+
+```text
+/mnt/data/GPT.SKILLS/GPT.SKILLS/SYSTEM_CORE/   ← broken
+```
+
+**Valid core ZIP root**
+
+```text
+SYSTEM_CORE/
+  MANIFEST.json
+  ENTRY.md
+  README.md
+  SEMANTICS.md
+  OPERATIONAL_RULES.md
+SKILLS/
+  README.md
+```
+
+**Invalid core ZIP root (wrapper directory)**
+
+```text
+GPT.SKILLS/
+  SYSTEM_CORE/
+  SKILLS/
+```
+
+The build script validates that the ZIP root contains exactly `{SYSTEM_CORE, SKILLS}` and rejects any ZIP where any entry starts with `GPT.SKILLS/`.
+
+### Required core ZIP entries
+
+The build enforces that the following entries are present:
+
+```text
+SYSTEM_CORE/MANIFEST.json
+SYSTEM_CORE/ENTRY.md
+SYSTEM_CORE/README.md
+SYSTEM_CORE/SEMANTICS.md
+SYSTEM_CORE/OPERATIONAL_RULES.md
+SKILLS/README.md
+```
+
+### Core manifest fields
+
+The core `SYSTEM_CORE/MANIFEST.json` requires all of:
+
+| Field | Required value |
+|---|---|
+| `system_name` | `"gpt_project_skill_system"` |
+| `version` | `"0.6"` |
+| `primary_file` | string |
+| `load_sequence` | non-empty array of strings |
+| `optional_load_sequence` | array of strings |
+
+`primary_file` must be included in `load_sequence`. The `load_sequence` and `optional_load_sequence` arrays must not overlap. Core mounted paths must be **direct filenames only** (no subdirectories); allowed extensions are `.md` and `.json`.
+
+---
+
+## Skill source layout
+
+Each skill lives in its own sub-directory under `skill_sources/`:
+
+```text
+skill_sources/
+  skill-adapter/
+    MANIFEST.json
+    SKILL.md
+    references/
+      adaptation_report_schema.md
+    scripts/
+      inspect_skill_candidate.py
+```
+
+The build script discovers all direct sub-directories of `skill_sources/` that contain a `MANIFEST.json` and builds a ZIP for each one. Directories without a `MANIFEST.json` are skipped silently.
+
+The built ZIP is written to `dist/skills/<skill_name>.zip` where `skill_name` is the value from that directory's `MANIFEST.json`.
+
+---
+
+## Adding a new skill source
+
+<Steps>
+  <Step title="Create the skill source directory">
+    Create a directory under `skill_sources/` named after your skill slug:
+
+    ```bash
+    mkdir skill_sources/my-skill
+    ```
+
+    The directory name must match the `skill_name` you will declare in `MANIFEST.json`.
+  </Step>
+  <Step title="Add MANIFEST.json">
+    Create `skill_sources/my-skill/MANIFEST.json` with `skill_name` matching the directory name:
+
+    ```json
+    {
+      "skill_name": "my-skill",
+      "version": "1.0"
+    }
+    ```
+
+    For explicit manifest mode, also declare `primary_file` and `load_sequence` (both or neither):
+
+    ```json
+    {
+      "skill_name": "my-skill",
+      "version": "1.0",
+      "primary_file": "SKILL.md",
+      "load_sequence": ["SKILL.md"]
+    }
+    ```
+  </Step>
+  <Step title="Add the primary skill file">
+    For fallback mode, add `SKILL.md` at the directory root. For explicit mode, add whatever file is declared as `primary_file`.
+
+    ```bash
+    touch skill_sources/my-skill/SKILL.md
+    ```
+  </Step>
+  <Step title="Add support, tool, and asset files">
+    Add any additional files declared in the manifest. Every path listed in `support_files`, `tool_files`, and `asset_files` must exist as a file (not a directory) under the skill source directory.
+
+    ```text
+    skill_sources/my-skill/
+      MANIFEST.json
+      SKILL.md
+      docs/
+        reference.md          ← declared in support_files
+      scripts/
+        helper.py             ← declared in tool_files
+    ```
+  </Step>
+  <Step title="Run the build script">
+    ```bash
+    python scripts/build_packages.py
+    ```
+
+    On success, the output includes your new skill:
+
+    ```text
+    built dist/GPT.SKILLS.zip
+    built dist/skills/my-skill.zip
+    ```
+  </Step>
+  <Step title="Upload to your ChatGPT Project">
+    Upload `dist/skills/my-skill.zip` to your ChatGPT Project. Then load it in a session:
+
+    ```text
+    SKILL my-skill UNPACK
+    SKILL my-skill LOAD
+    ```
+  </Step>
+</Steps>
+
+---
+
+## What the build validates
+
+The build script performs a comprehensive validation pass on every package before writing the output ZIP. A failure in any check is a hard fail — the build stops immediately with a descriptive error message.
+
+<Accordion title="Package shape and ZIP entry checks">
+  Applied to both core and skill ZIPs:
+
+  - ZIP entries must use POSIX `/` path separators — no `\` anywhere in any entry name.
+  - ZIP entries must be safe relative paths: no absolute paths, no `..`, no drive letters (e.g. `C:`), no empty path segments.
+  - No nested ZIP files inside a source directory.
+  - No `__pycache__` directories or `.pyc` files included in any output ZIP.
+</Accordion>
+
+<Accordion title="Core manifest validation">
+  - All five required fields present: `system_name`, `version`, `primary_file`, `load_sequence`, `optional_load_sequence`.
+  - `system_name` must be exactly `"gpt_project_skill_system"`.
+  - `version` must be exactly `"0.6"`.
+  - `load_sequence` must be a non-empty array of strings with no duplicates.
+  - `optional_load_sequence` must be an array of strings with no duplicates.
+  - `primary_file` must be included in `load_sequence`.
+  - `load_sequence` and `optional_load_sequence` must not overlap.
+  - Every path in `load_sequence` must use direct filenames only (no subdirectories).
+  - All paths must use only `.md` or `.json` extensions.
+  - Every required file must exist in the ZIP and be readable as UTF-8.
+</Accordion>
+
+<Accordion title="Skill manifest validation">
+  - `skill_name` must be a non-empty string.
+  - `skill_name` must match the source directory name.
+  - `version` must be a non-empty string.
+  - `primary_file` and `load_sequence` must either both be present or both be omitted.
+  - If explicit: `load_sequence` must be non-empty; `primary_file` must be included in `load_sequence`.
+  - `load_sequence` and `support_files` must not overlap.
+  - All array fields (`load_sequence`, `support_files`, `tool_files`, `asset_files`) must contain strings with no duplicates, and every path must be a safe relative path.
+</Accordion>
+
+<Accordion title="Declared file existence and type checks">
+  - Every file declared in `load_sequence` must exist as a file (not a directory) and be readable as UTF-8.
+  - Files in `load_sequence` must not have script extensions (`.py`, `.sh`, `.js`, `.ts`, `.bat`, `.cmd`, `.ps1`, and others).
+  - Every file declared in `support_files` must exist as a file target.
+  - Every file declared in `tool_files` must exist as a file target and be readable as UTF-8.
+  - Every file declared in `asset_files` must exist as a file target.
+</Accordion>
+
+<Accordion title="Skill ZIP structure checks">
+  - `MANIFEST.json` must be present at the ZIP root.
+  - The ZIP must not contain a single wrapper directory surrounding all contents.
+  - The ZIP must not contain a `GPT.SKILLS/` prefix.
+  - The ZIP must not contain nested ZIPs.
+  - The `skill_name` in the ZIP's `MANIFEST.json` must match the output filename.
+</Accordion>
+
+---
+
+## ZIP path rules
+
+All ZIP entries in every package must use POSIX `/` separators. The build script checks this both when writing the ZIP and again after writing by re-opening the archive.
+
+**Valid ZIP entries**
+
+```text
+MANIFEST.json
+SKILL.md
+docs/reference.md
+tools/helper.py
+templates/starter.csv
+```
+
+**Invalid ZIP entries**
+
+```text
+docs\reference.md        ← backslash separator
+tools\helper.py          ← backslash separator
+C:\Users\skill\file.md   ← drive letter
+../escape.md             ← path traversal
+```
+
+<Warning>
+  The build script hard fails if any ZIP entry contains a backslash. This check applies to both the core ZIP and every skill ZIP. There is no silent normalization.
+</Warning>
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Package Format" icon="file-code" href="/guides/skill-package-format">
+    Full reference for MANIFEST.json fields, file categories, and ZIP structure rules.
+  </Card>
+  <Card title="Adapting a Skill" icon="wrench" href="/guides/adapting-a-skill">
+    Step-by-step guide to wrapping an external skill into a compatible package.
+  </Card>
+</CardGroup>

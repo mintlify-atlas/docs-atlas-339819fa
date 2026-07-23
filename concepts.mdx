@@ -1,0 +1,264 @@
+---
+title: "Core concepts: sessions, skills, and lifecycle"
+sidebarTitle: "Concepts"
+description: "Understand the session-first model, the distinction between core and skills, lifecycle phases, mount meaning, and cooperative skill composition."
+---
+
+**GPT Project Skill System** is built around a small number of precise ideas. This page defines those ideas — session model, core vs. skill split, packaging rules, lifecycle phases, mount meaning, cooperative composition, and runtime boundary — so the rest of the documentation makes sense from a shared foundation.
+
+## The session model
+
+The session is the operating unit of the system.
+
+The system is not a permanent skill registry and not an always-on capability library. It is designed to construct a targeted session with a small, coherent set of active skills assembled for a specific work focus.
+
+**Active skills exist only inside the current chat.** When a chat ends or focus changes materially, the active semantic set does not carry over. The correct response to a changed focus is a new chat in the same Project, followed by a fresh targeted boot/load cycle that loads only what the new session actually needs.
+
+<Note>
+`SKILLS/` under the unpacked core tree is a physical deposit for installed skills. It is **not** a semantic registry and does not define the active skill set. Physical presence in `SKILLS/` does not mean a skill is active.
+</Note>
+
+This intentional constraint keeps each session small and prevents drift from skills that were relevant in a previous context but would add noise in the current one.
+
+## Core vs. skills
+
+The system draws a hard line between the **core** and **skills**.
+
+### What the core defines
+
+`SYSTEM_CORE/` contains the files that govern the system itself:
+
+| File | Role |
+|---|---|
+| `MANIFEST.json` | Authoritative load order — controls what is read and in which sequence |
+| `ENTRY.md` | Bootstrap and activation entry point for the core |
+| `README.md` | Descriptive overview of the system |
+| `SEMANTICS.md` | Defines the operating mental model |
+| `OPERATIONAL_RULES.md` | Defines lifecycle commands and validation behavior |
+
+The core defines:
+- bootstrap meaning
+- global lifecycle boundaries
+- command semantics (through `OPERATIONAL_RULES.md`)
+- validation boundaries
+- the limits of the system
+
+A skill must not redefine global core behavior. Lifecycle commands and their rules live in the core, not in any skill.
+
+### What a skill defines
+
+A skill defines only its local contribution to a session:
+- what capability it adds
+- when it is useful
+- what input and output it handles
+- any optional local hints or supporting AI-only files
+
+A skill is a focused, self-contained unit. It operates inside the boundaries set by the core, not alongside or above them.
+
+## Packages and ZIPs
+
+Both the core and every skill are distributed as ZIP files.
+
+### The core ZIP
+
+`dist/GPT.SKILLS.zip` must be **flat at root** — its top-level entries must be `SYSTEM_CORE/` and `SKILLS/`. It must not contain a wrapper directory:
+
+```text
+✅ Correct — flat at root
+SYSTEM_CORE/
+SKILLS/
+
+❌ Incorrect — wrapper directory present
+GPT.SKILLS/
+  SYSTEM_CORE/
+  SKILLS/
+```
+
+If a wrapper directory is present, the extracted tree lands at the wrong path and the system fails.
+
+### Skill ZIPs
+
+A skill ZIP must also be flat at root — `MANIFEST.json` at ZIP root, no single wrapper directory surrounding the package. Safe internal folders are allowed.
+
+There are two supported skill package shapes:
+
+<Accordion title="Fallback Skill — root SKILL.md">
+Use this shape when the skill entry point is a root-level `SKILL.md`. The manifest may omit both `primary_file` and `load_sequence`; the loader supplies them automatically.
+
+```text
+skill.zip
+  MANIFEST.json
+  SKILL.md
+```
+
+Minimal manifest:
+
+```json
+{
+  "skill_name": "example",
+  "version": "1.0"
+}
+```
+
+The loader applies these defaults:
+
+```json
+{
+  "primary_file": "SKILL.md",
+  "load_sequence": ["SKILL.md"]
+}
+```
+</Accordion>
+
+<Accordion title="Explicit Manifest Skill — declared entry point">
+Use this shape when the skill needs a declared entry point, preserved internal folders, support files, scripts, or assets.
+
+```text
+skill.zip
+  MANIFEST.json
+  any/safe/path/SKILL.md
+  docs/
+  tools/
+  templates/
+```
+
+Example manifest:
+
+```json
+{
+  "skill_name": "example",
+  "version": "1.0",
+  "primary_file": "any/safe/path/SKILL.md",
+  "load_sequence": ["any/safe/path/SKILL.md"],
+  "support_files": ["docs/reference.md"],
+  "tool_files": ["tools/helper.py"],
+  "asset_files": ["templates/template.csv"]
+}
+```
+
+Only files in `load_sequence` are semantically mounted. `support_files`, `tool_files`, and `asset_files` are physically available after unpack but are not active context.
+</Accordion>
+
+<Note>
+The ZIP filename, the `skill_name` field in the manifest, the command slug `<name>`, and the installed folder path must all match exactly. A mismatch is a hard fail.
+</Note>
+
+## Lifecycle phases
+
+The system defines three explicit lifecycle phases for every skill. Understanding them is essential because **installing is not activating**.
+
+### Phase 1 — UNPACK
+
+```text
+SKILL CORE UNPACK
+SKILL <name> UNPACK
+```
+
+UNPACK is a **physical** operation. It extracts a ZIP archive into the runtime path:
+
+- `SKILL CORE UNPACK` → extracts `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`
+- `SKILL <name> UNPACK` → extracts `<name>.zip` into `/mnt/data/GPT.SKILLS/SKILLS/<name>/`
+
+After UNPACK, the files exist on disk. The skill is **installed**, not active.
+
+`SKILL CORE UNPACK` also validates the core manifest and mounts the core files. Running it again in the same chat clears previously loaded skills.
+
+### Phase 2 — LOAD
+
+```text
+SKILL <name> LOAD
+```
+
+LOAD is a **semantic** operation. It reads the installed skill's manifest, follows its `load_sequence`, and inserts the declared instruction files into the current session context.
+
+Only `SKILL <name> LOAD` makes a skill active. A skill folder present under `SKILLS/` is installed; it becomes active only after LOAD.
+
+LOAD does not auto-unpack. If the skill has not been unpacked first, LOAD fails.
+
+```text
+Correct order:
+1. SKILL CORE UNPACK      ← physical + semantic (core only)
+2. SKILL <name> UNPACK    ← physical
+3. SKILL <name> LOAD      ← semantic
+```
+
+<Warning>
+Skipping UNPACK and running LOAD directly will fail. The system does not auto-unpack on LOAD.
+</Warning>
+
+## Mount meaning
+
+**Mount** is the term for what LOAD does to a skill's instruction files. It is a precise concept with a precise boundary.
+
+Mount means:
+- validated reading of AI-only textual files declared by a manifest's `load_sequence`
+- semantic insertion of those files into the current session context
+
+Mount does **not** mean:
+- installation into the model
+- runtime binding or hook execution
+- persistent enforcement beyond the current session
+- automatic routing of requests to the skill
+- watcher behavior
+- serialized state
+
+When a skill is mounted, the model has read its declared files and should use them when relevant to the current task. Nothing more and nothing less.
+
+<Note>
+`support_files`, `tool_files`, and `asset_files` are physically available after UNPACK. They are never mounted automatically. They can be consulted or used when explicitly needed, but they are not part of the active semantic set.
+</Note>
+
+## Cooperative composition
+
+Multiple skills can be active in the same session — when their work focuses are compatible.
+
+Composition is **cooperative**, not sequential. The model weighs the entire active skill pool against the current task and applies what is relevant.
+
+The right approach:
+- Load only the skills that belong in the current work focus
+- Keep the active skill set small and coherent
+- Avoid loading skills "just in case"
+
+<Warning>
+Excess active context degrades focus. Loading skills you are not using in a session adds noise to the semantic set and reduces the reliability of the skills you are actually using.
+</Warning>
+
+When a session accumulates too many active skills for unrelated work, the right move is to start a new chat and load only what the new session needs.
+
+## Runtime boundary
+
+The system's runtime boundary is intentionally narrow. Knowing what lies outside it prevents incorrect assumptions.
+
+The system does **not** provide:
+
+| Capability | Status |
+|---|---|
+| Hooks | ❌ Not provided |
+| Watcher behavior | ❌ Not provided |
+| Persistent runtime state | ❌ Not provided |
+| Automatic routing | ❌ Not provided |
+| Install into the model | ❌ Not provided |
+| Marketplace behavior | ❌ Not provided |
+| Internet auto-install | ❌ Not provided |
+| Automatic skill discovery | ❌ Not provided |
+| Dependency management | ❌ Not provided |
+
+Every lifecycle event is explicit and command-driven. No package is scanned, loaded, or activated unless you name it with a lifecycle command.
+
+<Note>
+Tool scripts declared in `tool_files` are physically available after UNPACK and use only Python standard library or packages already available in the GPT Python environment. There is no `pip install` and no network install. If a dependency is missing, tool execution degrades with a warning.
+</Note>
+
+## Explore further
+
+<CardGroup cols={2}>
+  <Card title="Loading Skills" icon="upload" href="/guides/loading-skills">
+    Step-by-step guide to unpacking and loading skills, handling load errors, and reloading within a session.
+  </Card>
+  <Card title="Session Lifecycle" icon="arrow-rotate-right" href="/guides/session-lifecycle">
+    How to structure sessions, when to open a new chat, and how to keep the active skill set focused.
+  </Card>
+  <Card title="Skill Package Format" icon="file-zipper" href="/guides/skill-package-format">
+    Supported package shapes, manifest fields, path rules, and build-script validation details.
+  </Card>
+</CardGroup>

@@ -1,0 +1,196 @@
+---
+title: "Runtime limits, hard fails, and session scope"
+sidebarTitle: "Runtime Limits"
+description: "What the GPT Project Skill System deliberately does not provide: no hooks, persistent state, auto-routing, or dependency install. Covers hard fail and degraded load rules."
+---
+
+The GPT Project Skill System is a session-scoped skill loader with an explicit and narrow contract. This page documents what the system deliberately does not provide, defines the strict boundary of session scope, distinguishes hard fail from degraded load, and explains what activation and mounting actually mean at runtime.
+
+---
+
+## What the system does not provide
+
+The following capabilities are **outside the scope** of the runtime by design. None of them exist at any layer of the system:
+
+| Feature | Status |
+|---|---|
+| Hooks | Not provided |
+| Watcher behavior | Not provided |
+| Persistent runtime state | Not provided |
+| Automatic routing | Not provided |
+| Install into the model | Not provided |
+| Marketplace behavior | Not provided |
+| Internet auto-install | Not provided |
+| Permanent skill installation | Not provided |
+| Automatic skill discovery | Not provided |
+| Automatic skill loading | Not provided |
+| Daemons | Not provided |
+| Dependency installation | Not provided |
+
+<Warning>
+  No file, manifest field, or metadata claim inside a skill or core package can
+  override these limits. A `runtime_hints` object stating `"uses_python": true`
+  does not install Python packages. A `capabilities` array does not create
+  routing or authorization. These fields are descriptive metadata only.
+</Warning>
+
+---
+
+## Session scope
+
+The active semantic set exists **only in the current chat session**.
+
+- Nothing persists across chats.
+- Nothing persists across sessions.
+- A skill that was loaded in a previous chat is **not active** in the current chat unless explicitly reloaded.
+
+To reactivate skills in a new chat, run `SKILL CORE UNPACK` followed by the relevant `SKILL <name> LOAD` commands. The physical install on disk persists between chats (within Project storage), but semantic activation does not.
+
+<Info>
+  When the work focus changes materially, close the active session by opening a
+  new chat and repeating a targeted boot/load cycle. This keeps the active
+  semantic set small and prevents context drift.
+</Info>
+
+---
+
+## What activation means
+
+After `SKILL CORE UNPACK` completes successfully, the core is **activated** for the session. After `SKILL <name> LOAD` completes successfully, the skill is **activated** for the session.
+
+**Activation means:**
+
+- The files declared in `MANIFEST.json` have been read in manifest order.
+- Required files passed mechanical validation (presence, UTF-8 readability, path policy).
+- The model treats the mounted files as the active semantic perimeter for the current session.
+
+**Activation does NOT mean:**
+
+- Installation into the model
+- Hook execution
+- Runtime binding
+- Watcher behavior
+- Persistent enforcement across sessions
+- Routing outside the current session
+- Serialized runtime state
+
+---
+
+## What mount means
+
+`load_sequence` is the only automatic semantic mount list. Files outside `load_sequence` — including `support_files`, `tool_files`, and `asset_files` — are physically available on disk after unpack but are **not mounted automatically**.
+
+**Mount means:**
+
+> Validated reading of AI-only files declared by a manifest and semantic insertion into the current session context.
+
+**Mount does NOT mean:**
+
+- Installation into the model
+- Runtime binding
+- Persistent enforcement
+- Automatic routing
+- Watcher behavior
+- Serialized state
+
+A skill folder present under `/mnt/data/GPT.SKILLS/SKILLS/` means the skill is **installed physically**. It does not mean the skill is semantically active. Only `SKILL <name> LOAD` makes an installed skill active.
+
+---
+
+## Tool file limits
+
+Files listed in `tool_files` are subject to the following restrictions:
+
+- **Never mounted automatically** — they do not become part of the session context.
+- **Never run automatically** — the Python environment may execute them only when explicitly invoked.
+- May use only the **Python standard library** or packages **already available** in the current GPT Python environment.
+- **No `pip install`** is permitted.
+- **No network install** is permitted.
+
+If a required dependency is missing at execution time, tool execution **degrades or fails with a warning**. It does not hard fail the load of the skill itself. Skills should provide a non-script fallback whenever possible.
+
+---
+
+## Hard fail vs degraded load
+
+The runtime distinguishes between two failure modes.
+
+### Hard fail
+
+A hard fail **stops the operation immediately** with no partial state. The following conditions always cause hard fail:
+
+<Accordion title="Hard fail conditions">
+
+- `MANIFEST.json` is missing
+- `MANIFEST.json` is not valid JSON
+- The manifest is invalid (any invalidity condition listed in the manifest schema)
+- `primary_file` is missing from the extracted tree
+- Any required file in `load_sequence` is missing from the extracted tree
+- Any required file in `load_sequence` is not readable as UTF-8
+- Any required path resolves to a directory instead of a file
+- Any present optional path resolves to a directory instead of a file
+
+</Accordion>
+
+### Degraded load
+
+Degraded load is **allowed only for files in `optional_load_sequence`**, and only after the manifest itself has been validated successfully.
+
+Degraded load applies when:
+
+- An optional file is **missing** from the extracted tree.
+- An optional file is present but **not readable as UTF-8**.
+
+Degraded load behavior:
+
+1. Continue with the load — do not abort.
+2. Do **not** mount the affected optional file.
+3. Emit a concise **technical warning** identifying the file.
+4. Do not represent the optional file as active in the session.
+
+<Note>
+  Degradation never applies to `MANIFEST.json`, `primary_file`, any file in
+  `load_sequence`, any invalid manifest path, or any directory target. These
+  are always hard fail conditions.
+</Note>
+
+---
+
+## Mechanical validation vs semantic review
+
+The runtime enforces two distinct layers of correctness checking.
+
+### Mechanical validation (Python hard checks)
+
+Mechanical validation is enforced by the Python runtime and covers:
+
+- Parsing manifest JSON
+- Validating field types and required field presence
+- Validating `system_name` and `version` (core)
+- Detecting duplicate entries inside each load list
+- Detecting overlap between required and optional lists
+- Enforcing path policy (absolute paths, `..`, subdirectory restrictions, extensions)
+- Confirming required file presence in the extracted tree
+- Confirming UTF-8 readability of required files
+- Probing UTF-8 readability of optional files (with degradable outcome)
+- Enforcing mounted file extension restrictions (core)
+- Distinguishing file targets from directory targets
+
+### Semantic review (external, not a hard check)
+
+Semantic review is **external to the runtime core** and is not reliable Python hard validation. It checks:
+
+- File role separation (e.g., lifecycle rules must not appear in `SEMANTICS.md`)
+- No operational rules inside `README.md`
+- No hook, binding, watcher, routing, or persistent enforcement claims in any core file
+- No global core rules inside skill packages
+- No alternate mount order declared outside `MANIFEST.json`
+- No contradiction between core files and manifest order
+
+<Warning>
+  The following are **semantic invalidities**, not mechanical hard fails: a
+  core file declaring an alternate mount order, `README.md` containing
+  operational rules, `SEMANTICS.md` containing lifecycle commands, or a core
+  file claiming hook or watcher behavior. The Python runtime will not catch
+  these — they require external review.
+</Warning>

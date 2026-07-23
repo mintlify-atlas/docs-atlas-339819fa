@@ -1,0 +1,312 @@
+---
+title: "Skill package format: ZIP structure and MANIFEST.json"
+sidebarTitle: "Package Format"
+description: "Complete reference for the skill ZIP structure, MANIFEST.json fields, file category semantics, path rules, and the fallback vs explicit manifest modes."
+---
+
+The GPT Project Skill System loads skills from ZIP packages. Each package contains a `MANIFEST.json` that identifies the skill and declares which files the loader should mount, make available as tools, or treat as supplemental references. This page covers every supported package shape, all manifest fields, file category semantics, path rules, and the identity requirements the loader enforces at unpack time.
+
+## Package modes
+
+A skill package operates in one of two modes depending on whether `primary_file` and `load_sequence` are present in the manifest.
+
+<Tabs>
+  <Tab title="Fallback mode">
+    Use fallback mode when the skill entry point is a root-level `SKILL.md` and you do not need to declare additional files. It is the simplest valid package shape.
+
+    **Minimal manifest**
+
+    ```json
+    {
+      "skill_name": "summarizer",
+      "version": "1.0"
+    }
+    ```
+
+    When `primary_file` and `load_sequence` are both omitted, the loader implicitly applies:
+
+    ```json
+    {
+      "primary_file": "SKILL.md",
+      "load_sequence": ["SKILL.md"]
+    }
+    ```
+
+    **Requirements**
+
+    - Root `SKILL.md` must exist in the ZIP.
+    - The ZIP must be flat — `MANIFEST.json` at root, no wrapper directory.
+
+    **ZIP structure**
+
+    ```text
+    summarizer.zip
+      MANIFEST.json
+      SKILL.md
+    ```
+
+    <Note>
+      The fallback is implicit. Do not add `primary_file` or `load_sequence` to your manifest unless you actually need to declare them.
+    </Note>
+  </Tab>
+  <Tab title="Explicit manifest mode">
+    Use explicit manifest mode when the skill needs a declared entry point, preserved internal folders, supplemental reference files, tool scripts, or data assets.
+
+    In explicit mode you must declare **both** `primary_file` and `load_sequence`. Providing only one of them is invalid and causes a hard fail.
+
+    **Example manifest**
+
+    ```json
+    {
+      "skill_name": "csv-profiler",
+      "version": "1.0",
+      "primary_file": "SKILL.md",
+      "load_sequence": ["SKILL.md"],
+      "support_files": ["docs/columns.md"],
+      "tool_files": ["tools/profile_csv.py"],
+      "asset_files": ["templates/template.csv"],
+      "capabilities": ["csv analysis"],
+      "runtime_hints": {"uses_python": true}
+    }
+    ```
+
+    **ZIP structure**
+
+    ```text
+    csv-profiler.zip
+      MANIFEST.json
+      SKILL.md
+      docs/
+        columns.md
+      tools/
+        profile_csv.py
+      templates/
+        template.csv
+    ```
+
+    <Note>
+      The package format does not require specific folder names. Preserve the original source folder structure whenever possible. Rename or reorganize only when required for path safety, ZIP safety, or compatibility.
+    </Note>
+  </Tab>
+</Tabs>
+
+---
+
+## Manifest fields
+
+### Required fields
+
+| Field | Type | Description |
+|---|---|---|
+| `skill_name` | string | Slug identifying the skill. Must match the ZIP filename, command slug, and installed folder name. |
+| `version` | string | Non-empty version string. No specific format enforced. |
+
+### Explicit mode fields
+
+| Field | Type | Description |
+|---|---|---|
+| `primary_file` | string | Safe relative path to the skill's primary entry file. Must be included in `load_sequence`. |
+| `load_sequence` | array of strings | Ordered list of files to mount semantically during `SKILL <name> LOAD`. Must include `primary_file`. |
+
+<Warning>
+  `primary_file` and `load_sequence` must either both be present or both be omitted. A manifest with only one of the two is invalid and will hard fail at unpack.
+</Warning>
+
+### Optional fields
+
+| Field | Type | Description |
+|---|---|---|
+| `support_files` | array of strings | Supplemental reference files available after unpack. Not mounted automatically. |
+| `tool_files` | array of strings | Script files available to the Python environment after unpack. Never mounted or run automatically. |
+| `asset_files` | array of strings | Data, template, or media files available after unpack. Not mounted automatically. |
+| `capabilities` | array of strings | Lightweight descriptive metadata about what the skill does. |
+| `runtime_hints` | JSON object | Lightweight descriptive hints about runtime expectations. |
+
+---
+
+## File categories
+
+### `load_sequence`
+
+`load_sequence` is the **only** automatic semantic mount list. Files listed here are read into the active skill context when `SKILL <name> LOAD` runs.
+
+Rules:
+- Must include `primary_file`.
+- Every entry must exist in the package and be a file target, not a directory.
+- Files must be AI-only textual UTF-8 files (`.md`, `.txt`, `.json`, and similar text formats).
+- Must **not** include scripts, executables, or binary assets — use `tool_files` or `asset_files` for those.
+- Must **not** overlap with `support_files`. Overlap is a hard fail.
+- May include nested files using safe relative paths (e.g. `docs/reference.md`).
+
+<Tip>
+  If a reference file should always be part of the active skill context, put it in `load_sequence`. If it should only be consulted on demand, put it in `support_files` instead.
+</Tip>
+
+### `support_files`
+
+`support_files` declares supplemental reference files that are physically available on the filesystem after unpack but are **not** mounted into the active context automatically. The skill or the user consults them only when needed.
+
+Rules:
+- If present, must be an array of strings.
+- Every entry must be a safe relative path.
+- Every declared file must exist and be a file target, not a directory.
+- Must not overlap with `load_sequence`.
+- This is a category declaration, not a folder policy — it does not require a specific folder structure.
+
+### `tool_files`
+
+`tool_files` declares script files that become physically available to the Python environment after unpack. They are **never** mounted into the AI context and **never** run automatically.
+
+Rules:
+- If present, must be an array of strings.
+- Every declared file must exist, be a file target, and be valid UTF-8 text.
+- Tool files may only use Python standard library or packages already available in the current GPT Python environment.
+- `pip install` and network installs are not permitted.
+- If a dependency is missing, execution must degrade or fail with a clear warning.
+- Provide a non-script fallback in `SKILL.md` when possible.
+
+<Warning>
+  Tool files are never executed automatically. They must be invoked explicitly during a session. Do not place any file in `tool_files` that requires installation of third-party packages.
+</Warning>
+
+### `asset_files`
+
+`asset_files` declares data files, templates, media, or other physical files that become available after unpack. They are **not** mounted into the AI context automatically.
+
+Rules:
+- If present, must be an array of strings.
+- Every declared file must exist and be a file target.
+- May be non-textual (binary formats are allowed when the environment can use them as files).
+- Suitable for CSV templates, sample data, images, and similar resources.
+
+### `capabilities`
+
+`capabilities` is lightweight descriptive metadata — an array of strings describing what the skill does. It does not create dependency management, authorization checks, routing, or validation guarantees. Invalid type produces a warning and is ignored at load time.
+
+### `runtime_hints`
+
+`runtime_hints` is a lightweight descriptive JSON object. Like `capabilities`, it is metadata only — not a control plane, not a dependency manager. Do not use it for behavior the loader cannot validate mechanically.
+
+---
+
+## ZIP structure rules
+
+### The flat-root requirement
+
+The ZIP must be **flat at root**:
+- `MANIFEST.json` must appear at the ZIP root.
+- No single wrapper directory may surround the entire package.
+- Safe internal folders **are** allowed.
+
+**Valid ZIP root**
+
+```text
+csv-profiler.zip
+  MANIFEST.json
+  SKILL.md
+  docs/
+  tools/
+  templates/
+```
+
+**Invalid ZIP root (wrapper directory)**
+
+```text
+csv-profiler.zip
+  csv-profiler/
+    MANIFEST.json
+    SKILL.md
+```
+
+A wrapper directory is a hard fail at unpack.
+
+### POSIX path separators
+
+All ZIP entries must use POSIX `/` path separators. Entries containing `\` are rejected.
+
+**Valid ZIP entries**
+
+```text
+MANIFEST.json
+SKILL.md
+docs/columns.md
+tools/profile_csv.py
+```
+
+**Invalid ZIP entries**
+
+```text
+docs\columns.md
+tools\profile_csv.py
+```
+
+---
+
+## Manifest identity
+
+The ZIP filename, command slug, installed folder name, and `skill_name` in `MANIFEST.json` must all match. The loader enforces this at unpack time.
+
+```text
+SKILL csv-profiler UNPACK       ← command slug
+csv-profiler.zip                ← ZIP filename
+/mnt/data/GPT.SKILLS/SKILLS/csv-profiler/   ← installed folder
+```
+
+```json
+{
+  "skill_name": "csv-profiler"  ← must match all of the above
+}
+```
+
+---
+
+## Slug rule
+
+`skill_name` must match the pattern `^[a-z0-9_-]+$`.
+
+**Valid slugs**
+
+```text
+summarizer
+legal-review
+csv_profiler
+a-b-1
+```
+
+**Invalid slugs**
+
+```text
+my skill       ← contains space
+Summarizer     ← uppercase letter
+skill.name     ← contains dot
+../x           ← path traversal
+x/y            ← contains slash
+               ← empty
+```
+
+---
+
+## Path policy
+
+Safe relative paths used in any manifest field must satisfy all of the following:
+
+- Not absolute (no leading `/`).
+- No `..` components.
+- No backslash characters (`\`).
+- No drive letters (e.g. `C:`).
+- No empty path segments (e.g. `docs//file.md`).
+- Not a wrapper directory as the sole ZIP root.
+- Not a directory target when a file is expected.
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Adapting a Skill" icon="wrench" href="/guides/adapting-a-skill">
+    Step-by-step guide to wrapping an external skill into a compatible package.
+  </Card>
+  <Card title="Packaging & Build" icon="box" href="/guides/packaging-and-build">
+    Use the build script to produce validated runtime ZIPs for all skill sources.
+  </Card>
+</CardGroup>

@@ -1,0 +1,106 @@
+---
+title: "GPT Project Skill System: Session-Scoped Skill Loader"
+sidebarTitle: "Introduction"
+description: "GPT Project Skill System adds a skill-package workflow to ChatGPT Projects. Package skills as ZIPs, mount only what you need, and keep every session focused."
+---
+
+The **GPT Project Skill System** is a session-scoped skill loader for ChatGPT Projects. This page explains what the system is, the problem it solves, how its core ideas fit together, and what it explicitly does not do — so you can decide whether it fits your workflow before reading anything else.
+
+## The problem it solves
+
+ChatGPT Projects can use uploaded files as working context, but they provide no native skill-package workflow. There is no built-in way to bundle a set of reusable instructions, reference files, and tool scripts into a portable unit, upload that unit to a Project, and mount it into a session with a single explicit command.
+
+Without a workflow like this, the only option is copying instructions by hand every time you start a new work session — which is fragile, error-prone, and hard to version.
+
+GPT Project Skill System adds that workflow.
+
+## Three core ideas
+
+The system is built around three simple ideas:
+
+1. **Package** a skill as a ZIP file — instructions, support files, scripts, and assets all in one place.
+2. **Unpack** that ZIP into the Project's runtime environment (`/mnt/data/GPT.SKILLS/`).
+3. **Load** the declared instructions into the current session only when you choose to use them.
+
+A skill is not active because its ZIP file is present in the Project. It becomes active only after it has been explicitly unpacked and loaded.
+
+## What a skill package can include
+
+A skill package is a self-contained ZIP file. It can carry more than one file:
+
+| File type | Purpose |
+|---|---|
+| **Instruction files** | The primary content mounted into the session |
+| **Support / reference files** | Supplemental material available after unpack, consulted only when needed |
+| **Python-compatible tool scripts** | Scripts physically available after unpack, never run automatically |
+| **Assets, templates, examples** | Data or template files physically usable from `/mnt` |
+
+<Note>
+Only files declared in a skill's `load_sequence` are semantically mounted as active context. Support files, tool scripts, and assets are physically available after unpack but are **not** automatic active context.
+</Note>
+
+## The session-first model
+
+The active skill set exists only inside the current chat session. The system is designed around short, controlled, focused sessions — not a permanent always-on capability library.
+
+When your work focus changes materially, the right move is to open a new chat in the same Project and repeat a targeted boot/load cycle with only the skills that belong in the new session. This keeps the active semantic set small and prevents context drift.
+
+`SKILLS/` under the unpacked core is a physical slot for installed skills, not a semantic registry. Physical presence there does not mean a skill is active.
+
+## The core package
+
+The core itself is packaged as `dist/GPT.SKILLS.zip`. When unpacked it produces:
+
+```text
+/mnt/data/GPT.SKILLS/
+  SYSTEM_CORE/
+  SKILLS/
+```
+
+The `SYSTEM_CORE/` directory holds five logical files that govern bootstrap, operating model, and lifecycle rules:
+
+```text
+MANIFEST.json          ← controls what is read and in what order
+ENTRY.md               ← boots and activates the core
+README.md              ← descriptive overview
+SEMANTICS.md           ← operating model
+OPERATIONAL_RULES.md   ← lifecycle commands and validation
+```
+
+`MANIFEST.json` is the authoritative source of load order. The core version at time of writing is `0.6`.
+
+## What the system does NOT provide
+
+<Warning>
+The following capabilities are outside the scope of this system and will not be added by loading any skill or modifying any file.
+</Warning>
+
+The system does not provide:
+
+- **Permanent skill installation** — active skills exist only in the current chat
+- **Automatic skill discovery** — no package is scanned unless you name it explicitly
+- **Automatic skill loading** — uploading a ZIP does not load it
+- **Automatic routing** — the model does not redirect requests to skills on its own
+- **Hooks** — no lifecycle hooks fire on any event
+- **Watchers** — no file or state is watched
+- **Daemons** — no background process runs
+- **Dependency installation** — no `pip install`, no network install
+- **Marketplace behavior** — no registry, no discovery feed
+- **Persistent runtime state** — nothing survives the end of a chat session
+
+## Explore further
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Upload the core, add custom instructions, load your first skill, and run a focused session in under five minutes.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/concepts">
+    Understand the session model, core vs. skill split, lifecycle phases, mount meaning, and cooperative composition.
+  </Card>
+  <Card title="Skill Package Format" icon="file-zipper" href="/guides/skill-package-format">
+    Learn the two supported package shapes, manifest fields, path rules, and what the build script validates.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/reference/commands">
+    Full reference for `SKILL CORE UNPACK`, `SKILL &lt;name&gt; UNPACK`, and `SKILL &lt;name&gt; LOAD`.
+  </Card>
+</CardGroup>

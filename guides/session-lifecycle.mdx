@@ -1,0 +1,135 @@
+---
+title: "Managing the skill session lifecycle in ChatGPT Projects"
+sidebarTitle: "Session Lifecycle"
+description: "Understand the full lifecycle of a GPT Project Skill System session: booting the core, loading skills, managing focus changes, and when to start a new chat."
+---
+
+The GPT Project Skill System is built around a **session-first model**: the single chat you are in is the operating unit. This page walks through the complete lifecycle from opening a new chat to wrapping up a focused work session, including how the core boots, how skills are loaded and reloaded, and when the right move is to start over in a fresh chat.
+
+---
+
+## The session as the operating unit
+
+A session is one chat inside a ChatGPT Project. Active skills exist only within that chat. There is no persistent skill registry, no automatic skill discovery, and no state that carries over between chats.
+
+`/mnt/data/GPT.SKILLS/` is the physical root of the system after core unpack. The `SYSTEM_CORE/` subdirectory holds the mounted core. The `SKILLS/` subdirectory is a physical deposit for installed skill packages — but a skill folder sitting under `SKILLS/` is **installed**, not **active**. Only an explicit `SKILL <name> LOAD` makes an installed skill active in the current session.
+
+<Tip>
+  Keep your active skill set small and targeted. Loading skills "just in case" adds excess context that dilutes the model's focus on your actual task. A session with two highly relevant skills almost always outperforms one with six loosely related ones.
+</Tip>
+
+---
+
+## Full boot sequence
+
+<Steps>
+  <Step title="Open a new chat in the Project">
+    Each session starts fresh. None of the skills from a previous chat carry over. Decide which skills you need for this session's work focus before you begin.
+  </Step>
+  <Step title="Boot the core with SKILL CORE UNPACK">
+    ```
+    SKILL CORE UNPACK
+    ```
+    This command:
+    - removes any existing `/mnt/data/GPT.SKILLS/` directory;
+    - removes any legacy `/mnt/data/sistema_madre/` directory;
+    - extracts `GPT.SKILLS.zip` (which must be present in the Project) into `/mnt/data/GPT.SKILLS/`;
+    - validates the core manifest at `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json`;
+    - mounts all files declared in the manifest's `load_sequence`;
+    - activates the core for the current session.
+
+    The core provides bootstrap meaning, global lifecycle boundaries, command semantics, and validation rules. No skill commands work until the core is active.
+  </Step>
+  <Step title="Unpack each skill you need">
+    For every skill you plan to use, run its UNPACK command:
+    ```
+    SKILL skill-adapter UNPACK
+    ```
+    Repeat for each skill. This extracts each skill ZIP into the `SKILLS/` directory and validates its structure, but does not yet make any skill active.
+  </Step>
+  <Step title="Load each skill you want active">
+    For every skill you want semantically active in this session:
+    ```
+    SKILL skill-adapter LOAD
+    ```
+    The loader reads the skill manifest, resolves the load sequence, and mounts the skill's instruction files into the current session context. The skill is now active.
+  </Step>
+  <Step title="Work with your active skill set">
+    With the core and your chosen skills active, work on your task. The model draws on the active skill pool as relevant. Multiple skills can be active simultaneously — their composition is cooperative, not sequential.
+  </Step>
+  <Step title="When focus changes materially, open a new chat">
+    When the nature of your work shifts significantly — a different domain, a different deliverable, a different set of tools — close this chat and open a new one. Repeat the boot sequence from step 1, loading only the skills relevant to the new focus.
+  </Step>
+</Steps>
+
+---
+
+## What SKILL CORE UNPACK resets
+
+Re-running `SKILL CORE UNPACK` at any point in a session performs a **full core reboot**:
+
+- `/mnt/data/GPT.SKILLS/` is deleted and re-extracted from `GPT.SKILLS.zip`
+- Any legacy `/mnt/data/sistema_madre/` directory is also removed
+- All previously loaded skills are **no longer considered active** after a core reboot
+
+<Warning>
+  Running `SKILL CORE UNPACK` mid-session clears all active skills. You must re-run `SKILL <name> LOAD` for every skill you want active again. If any of those skills were only in-memory and not yet unpacked to disk, you must re-run UNPACK as well.
+</Warning>
+
+The core reboot does not fall back to any legacy path. The only valid outcome is a clean extraction at `/mnt/data/GPT.SKILLS/`. If that path cannot be produced, the command hard fails.
+
+---
+
+## Reloading a skill
+
+Calling `SKILL <name> LOAD` on an already-active skill performs a **full semantic reload**. The manifest is re-read, the load sequence is re-resolved, and the skill files are re-mounted into the session context. This is useful if you want to refresh the skill's instructions after re-running UNPACK, or if you suspect the session context has drifted.
+
+```
+SKILL skill-adapter UNPACK
+SKILL skill-adapter LOAD
+```
+
+Re-running UNPACK alone does not update the active semantic context — you must follow it with LOAD to make the refreshed package active.
+
+---
+
+## Cooperative composition
+
+When multiple skills are active in the same session, they compose cooperatively. The model weighs the entire active skill pool against the current task and draws on whichever skills are relevant. There is no sequential routing, no hooks, and no watcher behavior.
+
+```
+SKILL skill-adapter UNPACK
+SKILL my-writing-tool UNPACK
+
+SKILL skill-adapter LOAD
+SKILL my-writing-tool LOAD
+```
+
+Both skills are now active and available to the model simultaneously.
+
+Keep the set coherent. Active skills should all support the same work focus. Unrelated skills compete for context and degrade precision.
+
+---
+
+## Session boundary and focus hygiene
+
+The active semantic set exists only in the current chat. When your work focus changes materially:
+
+1. Open a new chat in the Project.
+2. Run a fresh, targeted boot/load cycle.
+3. Load only the skills you actually need for the new task.
+
+This pattern keeps the active context small, avoids semantic drift from a long accumulating session, and ensures every session starts from a known-good state.
+
+There is no mechanism to "save" an active session or transfer it to a new chat. The session-first model is by design — it ensures you are always working with an intentional, explicitly constructed skill set.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Loading Skills" icon="download" href="/guides/loading-skills">
+    Step-by-step details for the UNPACK and LOAD commands, including hard fail conditions for each.
+  </Card>
+  <Card title="Skill Adapter" icon="wrench" href="/guides/skill-adapter">
+    Use the bundled skill-adapter skill to inspect and adapt external skill packages for this system.
+  </Card>
+</CardGroup>
