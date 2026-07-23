@@ -48,7 +48,7 @@ Only make changes required for one of these specific reasons:
     ```text
     summarizer        ✓ valid
     legal-review      ✓ valid
-    csv_profiler      ✓ valid
+    a_b-1             ✓ valid
     My Skill          ✗ invalid (uppercase, space)
     skill.name        ✗ invalid (dot)
     ../escape         ✗ invalid (traversal)
@@ -251,19 +251,25 @@ All four identity points — command slug, ZIP filename, installed folder, and `
 <Accordion title="Adaptation checklist">
   - `MANIFEST.json` exists in the package.
   - Fallback mode: root `SKILL.md` exists.
+  - Fallback mode: `SKILL.md` is UTF-8 text/Markdown.
   - Explicit manifest mode: declared `primary_file` exists and is included in `load_sequence`.
+  - Explicit manifest mode: declared `primary_file` is UTF-8 text/Markdown.
   - ZIP is flat — `MANIFEST.json` is at root, no single wrapper directory.
   - ZIP filename is `<skill_name>.zip`.
   - Command slug equals `skill_name`.
+  - Installed folder will be `/mnt/data/GPT.SKILLS/SKILLS/<skill_name>/`.
   - `skill_name` follows `^[a-z0-9_-]+$`.
   - `version` is a non-empty string.
   - `MANIFEST.json` is valid UTF-8 JSON.
-  - Declared load files are AI-only textual (UTF-8 text or Markdown) files.
+  - Declared load files are AI-only textual files.
+  - Extra mounted files are declared in `load_sequence`.
+  - Extra mounted files are AI-only textual files.
   - Internal paths are safe relative paths — no `..`, no backslashes, no drive letters, no empty segments.
   - `support_files` does not overlap with `load_sequence`.
   - `tool_files` are not mounted and not run automatically.
-  - Tool files use only Python stdlib or packages already available in the GPT environment — no `pip install`, no network install.
-  - No pip install or network install is required by any declared file.
+  - `asset_files` are not mounted automatically.
+  - No `pip install` or network install is required.
+  - Requirements are in `SKILL.md`, not a strong manifest schema.
   - The skill does not redefine core operational rules.
 </Accordion>
 

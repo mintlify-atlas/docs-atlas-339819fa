@@ -1,7 +1,7 @@
 ---
-title: "Build and package skills with the build script"
+title: "Build and package GPT Project skills with the build script"
 sidebarTitle: "Packaging & Build"
-description: "Use build_packages.py to build validated runtime ZIPs for the core and all skill sources. Covers validation rules, ZIP path requirements, and adding new skills."
+description: "Use build_packages.py to produce validated runtime ZIPs for the core and all skill sources. Covers validation rules, ZIP path rules, and adding new skills."
 ---
 
 The GPT Project Skill System ships a build script that compiles every runtime package from source, validates each one against the full set of package rules, and writes ready-to-upload ZIPs into the `dist/` directory. This page covers how to run the build script, what it validates, the ZIP path requirements it enforces, and how to add a new skill source so it is picked up automatically on the next build.

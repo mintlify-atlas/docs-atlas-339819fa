@@ -1,7 +1,7 @@
 ---
-title: "Runtime limits, hard fails, and session scope"
+title: "Runtime limits, hard fail, degraded load, and session scope"
 sidebarTitle: "Runtime Limits"
-description: "What the GPT Project Skill System deliberately does not provide: no hooks, persistent state, auto-routing, or dependency install. Covers hard fail and degraded load rules."
+description: "What the GPT Project Skill System does not provide, session scope, hard fail vs degraded load, and what activation and mounting mean."
 ---
 
 The GPT Project Skill System is a session-scoped skill loader with an explicit and narrow contract. This page documents what the system deliberately does not provide, defines the strict boundary of session scope, distinguishes hard fail from degraded load, and explains what activation and mounting actually mean at runtime.
@@ -62,6 +62,7 @@ After `SKILL CORE UNPACK` completes successfully, the core is **activated** for 
 
 - The files declared in `MANIFEST.json` have been read in manifest order.
 - Required files passed mechanical validation (presence, UTF-8 readability, path policy).
+- Optional files, if declared, have either mounted successfully or produced degraded load warnings.
 - The model treats the mounted files as the active semantic perimeter for the current session.
 
 **Activation does NOT mean:**

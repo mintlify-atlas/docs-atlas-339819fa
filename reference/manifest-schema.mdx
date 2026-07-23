@@ -1,7 +1,7 @@
 ---
-title: "MANIFEST.json schema for core and skill packages"
+title: "MANIFEST.json schema: core and skill package fields"
 sidebarTitle: "Manifest Schema"
-description: "Complete schema reference for the core and skill MANIFEST.json files — required fields, optional fields, fallback behavior, and invalidity conditions."
+description: "Complete schema reference for core and skill MANIFEST.json — required fields, optional fields, fallback behavior, and all invalidity conditions."
 ---
 
 Every package in the GPT Project Skill System is described by a `MANIFEST.json` file. This page documents both schemas in full: the **core manifest** that lives in `SYSTEM_CORE/` and the **skill manifest** that lives at the root of each skill package. It also covers fallback behavior, invalidity conditions that cause a hard fail, and a real-world skill manifest example.
@@ -212,6 +212,8 @@ Any of the following conditions renders a manifest invalid and causes an immedia
 - Overlap between `load_sequence` and `support_files` *(skill)*
 - Any path that is absolute (begins with `/`)
 - Any path that contains `..`
+- Any core mounted path that references outside `SYSTEM_CORE/`
+- Any core mounted path that contains a subdirectory component *(core version 0.6: direct filenames only)*
 - Unsupported mounted file extension (core: only `.md` and `.json` are allowed)
 - Providing only one of `primary_file` or `load_sequence` *(skill)*
 

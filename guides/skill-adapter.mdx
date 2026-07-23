@@ -1,7 +1,7 @@
 ---
-title: "Inspect and adapt skills with the skill-adapter"
+title: "Inspect and adapt external skills with the skill-adapter"
 sidebarTitle: "Skill Adapter"
-description: "Use the bundled skill-adapter skill to inspect external skill ZIPs for compatibility, get a manifest draft, and understand blockers before adapting them to the system."
+description: "Use the bundled skill-adapter to inspect external skill ZIPs for compatibility, get a manifest draft, and understand hard blockers before adapting them."
 ---
 
 The GPT Project Skill System ships with a bundled skill called **skill-adapter** — a preservation-first inspection tool that helps you evaluate whether an external skill package can be adapted to the system's package format. This page covers what skill-adapter does, how to load it, how to use it, and how to read its output.
@@ -143,13 +143,13 @@ skill-adapter follows this workflow internally (from `SKILL.md`):
 It is never run automatically. You can invoke it directly when working inside a Code Interpreter session:
 
 ```bash
-python inspect_skill_candidate.py <path-to-zip-or-folder>
+python scripts/inspect_skill_candidate.py <path-to-zip-or-folder>
 ```
 
 **Optional flags:**
 
 ```bash
-python inspect_skill_candidate.py <path-to-zip-or-folder> \
+python scripts/inspect_skill_candidate.py <path-to-zip-or-folder> \
   --slug <desired-skill-name> \
   --output <report.json>
 ```

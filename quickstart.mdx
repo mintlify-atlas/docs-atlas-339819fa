@@ -1,5 +1,5 @@
 ---
-title: "Get started with GPT Project Skill System"
+title: "Quickstart: set up GPT Project Skill System in minutes"
 sidebarTitle: "Quickstart"
 description: "Set up the GPT Project Skill System core, load the skill-adapter skill, and run your first focused session in a ChatGPT Project in under five minutes."
 ---
@@ -7,147 +7,145 @@ description: "Set up the GPT Project Skill System core, load the skill-adapter s
 This guide walks you through setting up **GPT Project Skill System** from scratch — creating a Project, uploading the core and a skill package, and running your first skill-loaded session. The whole process takes under five minutes.
 
 <Steps>
+  <Step title="Check prerequisites">
+    Before you begin, make sure you have:
 
-### Check prerequisites
+    - A **ChatGPT account with Projects access** — available in the ChatGPT Desktop App or on the web at [chatgpt.com](https://chatgpt.com). Projects is a ChatGPT feature, not an API feature; this system does not use the API.
+    - The **repository files** from [`xxyoudeadpunkxx/chatgpt-skill-system`](https://github.com/xxyoudeadpunkxx/chatgpt-skill-system). You need at minimum:
+      - `dist/GPT.SKILLS.zip` — the core package
+      - `CUSTOM_INSTRUCTIONS.txt` — the bootstrap instruction text
+      - `dist/skills/skill-adapter.zip` — the included example skill
 
-Before you begin, make sure you have:
+    <Tip>
+    Clone or download the repository so all three files are available locally. The `dist/` directory contains pre-built ZIPs ready to upload.
+    </Tip>
+  </Step>
 
-- A **ChatGPT account with Projects access** — available in the ChatGPT Desktop App or on the web at [chatgpt.com](https://chatgpt.com). Projects is a ChatGPT feature, not an API feature; this system does not use the API.
-- The **repository files** from [`xxyoudeadpunkxx/chatgpt-skill-system`](https://github.com/xxyoudeadpunkxx/chatgpt-skill-system). You need at minimum:
-  - `dist/GPT.SKILLS.zip` — the core package
-  - `CUSTOM_INSTRUCTIONS.txt` — the bootstrap instruction text
-  - `dist/skills/skill-adapter.zip` — the included example skill
+  <Step title="Create a new ChatGPT Project">
+    In ChatGPT, create a dedicated Project for your skill-based work:
 
-<Tip>
-Clone or download the repository so all three files are available locally. The `dist/` directory contains pre-built ZIPs ready to upload.
-</Tip>
+    1. In the left sidebar, click **New project** (or open an existing Project you want to use).
+    2. Give the Project a descriptive name, for example `Skill Sessions`.
 
-### Create a new ChatGPT Project
+    <Note>
+    Each Project has its own file storage and custom instructions. Using a dedicated Project keeps your skill ZIPs isolated from other work.
+    </Note>
+  </Step>
 
-In ChatGPT, create a dedicated Project for your skill-based work:
+  <Step title="Upload the core ZIP to the Project">
+    With the Project open, upload `dist/GPT.SKILLS.zip` to the Project's file storage:
 
-1. In the left sidebar, click **New project** (or open an existing Project you want to use).
-2. Give the Project a descriptive name, for example `Skill Sessions`.
+    1. Open the Project settings or file panel.
+    2. Upload `dist/GPT.SKILLS.zip`.
 
-<Note>
-Each Project has its own file storage and custom instructions. Using a dedicated Project keeps your skill ZIPs isolated from other work.
-</Note>
+    The file is now available to every chat you start inside this Project. It is **not yet unpacked or active** — that happens when you issue the boot command in a chat.
+  </Step>
 
-### Upload the core ZIP to the Project
+  <Step title="Add the custom instructions">
+    Copy the full content of `CUSTOM_INSTRUCTIONS.txt` and paste it into the Project's custom instructions field:
 
-With the Project open, upload `dist/GPT.SKILLS.zip` to the Project's file storage:
+    ```text
+    At the start, unpack `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`.
 
-1. Open the Project settings or file panel.
-2. Upload `dist/GPT.SKILLS.zip`.
+    Read `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json` and follow its `load_sequence`.
+    ```
 
-The file is now available to every chat you start inside this Project. It is **not yet unpacked or active** — that happens when you issue the boot command in a chat.
+    These two lines tell the model what to do at the start of every chat in this Project: unpack the core ZIP into the expected runtime path, then read the manifest and load the declared core files.
 
-### Add the custom instructions
+    <Warning>
+    Paste the instructions exactly as shown. Do not paraphrase or shorten them. The paths and filenames must be verbatim for the unpack and manifest-read steps to succeed.
+    </Warning>
+  </Step>
 
-Copy the full content of `CUSTOM_INSTRUCTIONS.txt` and paste it into the Project's custom instructions field:
+  <Step title="Upload a skill ZIP">
+    Still in the Project's file panel, upload the skill package you want to use:
 
-```text
-At the start, unpack `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`.
+    ```text
+    dist/skills/skill-adapter.zip
+    ```
 
-Read `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json` and follow its `load_sequence`.
-```
+    The `skill-adapter` skill helps inspect external skill ZIP files before adapting them to this system. It reports whether a candidate package looks compatible, blocked, or recoverable, and surfaces packaging problems such as wrapper folders, unsafe paths, or missing declared files.
 
-These two lines tell the model what to do at the start of every chat in this Project: unpack the core ZIP into the expected runtime path, then read the manifest and load the declared core files.
+    You can upload additional skill ZIPs at any time. A ZIP present in the Project is inert until you explicitly unpack and load it.
+  </Step>
 
-<Warning>
-Paste the instructions exactly as shown. Do not paraphrase or shorten them. The paths and filenames must be verbatim for the unpack and manifest-read steps to succeed.
-</Warning>
+  <Step title="Start a new chat in the Project">
+    Open a new chat inside the Project you just configured. Because the custom instructions are now set, the model will attempt to execute the bootstrap steps automatically at the start of the session.
 
-### Upload a skill ZIP
+    If the automatic bootstrap does not run or you want to trigger it manually, proceed to the next step.
+  </Step>
 
-Still in the Project's file panel, upload the skill package you want to use:
+  <Step title="Boot the core">
+    Type either of the following to unpack and activate the core:
 
-```text
-dist/skills/skill-adapter.zip
-```
+    ```text
+    SKILL CORE UNPACK
+    ```
 
-The `skill-adapter` skill helps inspect external skill ZIP files before adapting them to this system. It reports whether a candidate package looks compatible, blocked, or recoverable, and surfaces packaging problems such as wrapper folders, unsafe paths, or missing declared files.
+    or simply ask in natural language:
 
-You can upload additional skill ZIPs at any time. A ZIP present in the Project is inert until you explicitly unpack and load it.
+    ```text
+    Unpack GPT.SKILLS
+    ```
 
-### Start a new chat in the Project
+    The model will:
 
-Open a new chat inside the Project you just configured. Because the custom instructions are now set, the model will attempt to execute the bootstrap steps automatically at the start of the session.
+    1. Remove any previous `/mnt/data/GPT.SKILLS/` tree.
+    2. Extract `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`.
+    3. Read and validate `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json`.
+    4. Mount the files declared in `load_sequence` — `ENTRY.md`, `README.md`, `SEMANTICS.md`, and `OPERATIONAL_RULES.md` — into the session context.
+    5. Report that the core is active.
 
-If the automatic bootstrap does not run or you want to trigger it manually, proceed to the next step.
+    <Note>
+    Running `SKILL CORE UNPACK` again in the same chat resets the active core state and clears any previously loaded skills from the active semantic set. Use it intentionally.
+    </Note>
+  </Step>
 
-### Boot the core
+  <Step title="Unpack the skill">
+    Now install the `skill-adapter` skill physically into the runtime:
 
-Type either of the following to unpack and activate the core:
+    ```text
+    SKILL skill-adapter UNPACK
+    ```
 
-```text
-SKILL CORE UNPACK
-```
+    The model will:
 
-or simply ask in natural language:
+    1. Validate `skill-adapter` as a slug.
+    2. Verify that `skill-adapter.zip` exists in Project sources and is flat at root (no wrapper directory).
+    3. Verify that `skill_name` in the skill's `MANIFEST.json` matches `skill-adapter`.
+    4. Extract the ZIP into `/mnt/data/GPT.SKILLS/SKILLS/skill-adapter/`.
 
-```text
-Unpack GPT.SKILLS
-```
+    After this step the skill is **installed** in the runtime directory. It is not yet semantically active.
+  </Step>
 
-The model will:
+  <Step title="Load the skill">
+    Make the skill active in the current session:
 
-1. Remove any previous `/mnt/data/GPT.SKILLS/` tree.
-2. Extract `GPT.SKILLS.zip` into `/mnt/data/GPT.SKILLS/`.
-3. Read and validate `/mnt/data/GPT.SKILLS/SYSTEM_CORE/MANIFEST.json`.
-4. Mount the files declared in `load_sequence` — `ENTRY.md`, `README.md`, `SEMANTICS.md`, and `OPERATIONAL_RULES.md` — into the session context.
-5. Report that the core is active.
+    ```text
+    SKILL skill-adapter LOAD
+    ```
 
-<Note>
-Running `SKILL CORE UNPACK` again in the same chat resets the active core state and clears any previously loaded skills from the active semantic set. Use it intentionally.
-</Note>
+    The model will:
 
-### Unpack the skill
+    1. Locate the skill at `/mnt/data/GPT.SKILLS/SKILLS/skill-adapter/`.
+    2. Read the skill's manifest and `load_sequence`.
+    3. Mount the declared instruction files into the session context.
+    4. Report that `skill-adapter` is active.
 
-Now install the `skill-adapter` skill physically into the runtime:
+    <Tip>
+    You can load multiple skills in the same session as long as they support the same work focus. Load only the skills you actually need — excess active context degrades focus.
+    </Tip>
+  </Step>
 
-```text
-SKILL skill-adapter UNPACK
-```
+  <Step title="Use the skill">
+    The `skill-adapter` skill is now active. Ask the model to inspect an external skill package:
 
-The model will:
+    ```text
+    Inspect this ZIP and tell me whether it is compatible with GPT Project Skill System.
+    ```
 
-1. Validate `skill-adapter` as a slug.
-2. Verify that `skill-adapter.zip` exists in Project sources and is flat at root (no wrapper directory).
-3. Verify that `skill_name` in the skill's `MANIFEST.json` matches `skill-adapter`.
-4. Extract the ZIP into `/mnt/data/GPT.SKILLS/SKILLS/skill-adapter/`.
-
-After this step the skill is **installed** in the runtime directory. It is not yet semantically active.
-
-### Load the skill
-
-Make the skill active in the current session:
-
-```text
-SKILL skill-adapter LOAD
-```
-
-The model will:
-
-1. Locate the skill at `/mnt/data/GPT.SKILLS/SKILLS/skill-adapter/`.
-2. Read the skill's manifest and `load_sequence`.
-3. Mount the declared instruction files into the session context.
-4. Report that `skill-adapter` is active.
-
-<Tip>
-You can load multiple skills in the same session as long as they support the same work focus. Load only the skills you actually need — excess active context degrades focus.
-</Tip>
-
-### Use the skill
-
-The `skill-adapter` skill is now active. Ask the model to inspect an external skill package:
-
-```text
-Inspect this ZIP and tell me whether it is compatible with GPT Project Skill System.
-```
-
-The model will apply the `skill-adapter` instructions to evaluate the package against the system's packaging rules and report whether it is compatible, blocked, or recoverable — and what specific problems it found.
-
+    The model will apply the `skill-adapter` instructions to evaluate the package against the system's packaging rules and report whether it is compatible, blocked, or recoverable — and what specific problems it found.
+  </Step>
 </Steps>
 
 ## What happens next — session lifecycle
